@@ -1,4 +1,7 @@
 import sys
+import os
+sys.path.insert(0, os.path.abspath('.'))
+
 from orion.lexer.lexer import Lexer
 from orion.parser.parser import Parser
 from orion.evaluator import evaluator
@@ -6,53 +9,42 @@ from orion.evaluator.environment import new_environment
 
 def main():
     """
-    Reads the main Orion test file, parses it, and evaluates it.
+    Runs the full Orion toolchain on the main test file.
     """
-    print("--- Running Orion Toolchain ---")
+    print("--- Running Orion Final Test ---")
 
-    # --- Load Modules into Cache (for main test file) ---
-    evaluator.MODULE_CACHE["UI_source"] = "let createWindow = function(title, size) {};"
-    evaluator.MODULE_CACHE["Hardware_source"] = """
-let sensor = {"read": function(name) { return 76; }};
-let fan = {"setSpeed": function(speed) {}};
-"""
-
-    # --- Load Main File ---
-    main_file = "test.orion"
     try:
-        with open(main_file, "r", encoding="utf-8") as f:
+        with open("test.orion", "r", encoding="utf-8") as f:
             source_code = f.read()
     except FileNotFoundError:
-        print(f"Error: {main_file} not found.")
+        print("Error: test.orion not found.")
         sys.exit(1)
 
-    # --- Run Toolchain ---
+    # 1. Parsing
     print("\n[1/2] Parsing...")
-    lexer = Lexer(source_code)
-    parser = Parser(lexer)
+    parser = Parser(Lexer(source_code))
     program = parser.parse_program()
 
     if parser.errors:
-        print("--- Parser Errors Encountered (Known Limitations) ---")
+        print("--- Parser Errors ---")
         for msg in parser.errors:
             print(f"  - {msg}")
         print("--- End of Errors ---")
+        sys.exit(1) # Stop if there are parsing errors
     else:
         print("--- Parsing Successful ---")
 
+    # 2. Evaluation
     print("\n[2/2] Evaluating...")
     env = new_environment()
-    # injecting built-ins is now handled inside the evaluator for simplicity
-    # in a real scenario, this would be more robust
-
     evaluated = evaluator.eval_node(program, env)
 
     print("\n--- Evaluator Result ---")
     if evaluated is not None:
-        print(evaluated.to_string())
+        print(f"OK. Final evaluated object: {evaluated.to_string()}")
     else:
-        print("Evaluation did not produce a final result.")
-    print("--- End of Result ---")
+        print("OK. Evaluation finished without a final value.")
+    print("--- End of Test ---")
 
 
 if __name__ == "__main__":

@@ -155,16 +155,32 @@ def eval_hash_index_expression(hash_obj: obj.Hash, index: obj.Object):
 
 def apply_function(fn: obj.Object, args: list[obj.Object]):
     if isinstance(fn, obj.Function):
-        extended_env = new_enclosed_environment(fn.env)
-        for i, param in enumerate(fn.parameters):
-            extended_env.set(param.value, args[i])
+        extended_env = extend_function_env(fn, args)
         evaluated = eval_node(fn.body, extended_env)
         if isinstance(evaluated, obj.ReturnValue):
             return evaluated.value
         return evaluated
+
     if isinstance(fn, obj.Builtin):
         return fn.fn(*args)
+
     return NULL # Error: not a function
+
+def extend_function_env(fn: obj.Function, args: list[obj.Object]) -> Environment:
+    env = new_enclosed_environment(fn.env)
+
+    # Check for named arguments (a single hash literal)
+    if len(args) == 1 and args[0].object_type() == obj.ObjectType.HASH:
+        hash_args = args[0]
+        for key_hash, pair in hash_args.pairs.items():
+            param_name = pair.key.value
+            env.set(param_name, pair.value)
+    else: # Positional arguments
+        for i, param in enumerate(fn.parameters):
+            if i < len(args):
+                env.set(param.value, args[i])
+
+    return env
 
 # --- Utilities ---
 def is_truthy(evaluated_obj: obj.Object) -> bool:

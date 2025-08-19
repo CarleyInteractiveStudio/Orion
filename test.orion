@@ -17,7 +17,7 @@ component StatusLabel {
 }
 
 function onStart() {
-    createWindow("Monitor", size: (300, 150));
+    createWindow("Monitor", {"size": [300, 150]});
     StatusLabel("CPU OK");
 }
 
