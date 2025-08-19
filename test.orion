@@ -1,0 +1,32 @@
+module MonitorApp;
+use UI;
+use Hardware;
+
+/*
+  This is a multi-line comment.
+  The lexer should ignore it.
+*/
+var threshold = 75;
+
+component StatusLabel {
+    font: "Orbitron", 16px;
+    color: #00cc00;
+
+    warning {
+        color: #ff3300;
+    }
+}
+
+// This is a single-line comment.
+function onStart() {
+    createWindow("Monitor", size: (300, 150));
+    StatusLabel("CPU OK");
+}
+
+function onUpdate(delta) {
+    let temp = sensor.read("cpuTemp");
+    if (temp > threshold) {
+        StatusLabel.warning("ALERTA");
+        fan.setSpeed(100);
+    }
+}
