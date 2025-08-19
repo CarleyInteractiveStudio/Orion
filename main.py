@@ -6,7 +6,7 @@ from orion.evaluator.environment import new_environment
 
 def main():
     """
-    Reads the main Orion test file, parses it, and (in the future) evaluates it.
+    Reads the main Orion test file, parses it, and evaluates it.
     """
     print("--- Running Orion Toolchain ---")
 
@@ -18,7 +18,8 @@ def main():
         print(f"Error: {test_file} not found.")
         sys.exit(1)
 
-    print("\n[1/2] Lexing and Parsing...")
+    # 1. Lexing & Parsing
+    print("\n[1/2] Parsing...")
     lexer = Lexer(source_code)
     parser = Parser(lexer)
     program = parser.parse_program()
@@ -28,12 +29,11 @@ def main():
         for msg in parser.errors:
             print(f"  - {msg}")
         print("--- End of Errors ---")
-        # We don't exit here, to show that parsing can continue.
     else:
         print("--- Parsing Successful ---")
 
-
-    print("\n[2/2] Evaluating (Partial Implementation)...")
+    # 2. Evaluation
+    print("\n[2/2] Evaluating...")
     from orion.evaluator.builtins import builtins
     env = new_environment()
     for name, fn in builtins.items():

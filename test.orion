@@ -4,7 +4,6 @@ use Hardware;
 
 /*
   This is a multi-line comment.
-  The lexer should ignore it.
 */
 var threshold = 75;
 
@@ -17,7 +16,6 @@ component StatusLabel {
     }
 }
 
-// This is a single-line comment.
 function onStart() {
     createWindow("Monitor", size: (300, 150));
     StatusLabel("CPU OK");

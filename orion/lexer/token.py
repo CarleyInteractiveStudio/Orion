@@ -3,14 +3,14 @@ from dataclasses import dataclass
 
 class TokenType(Enum):
     # Special Tokens
-    ILLEGAL = "ILLEGAL"  # Token/character we don't know about
-    EOF = "EOF"          # End of File
+    ILLEGAL = "ILLEGAL"
+    EOF = "EOF"
 
     # Identifiers + Literals
-    IDENT = "IDENT"      # add, foobar, x, y, ...
-    INT = "INT"          # 12345
-    FLOAT = "FLOAT"      # 1.23
-    STRING = "STRING"    # "hello world"
+    IDENT = "IDENT"
+    INT = "INT"
+    FLOAT = "FLOAT"
+    STRING = "STRING"
 
     # Operators
     ASSIGN = "="
@@ -60,7 +60,7 @@ class TokenType(Enum):
     IMPORT = "IMPORT"
     LICENSE = "LICENSE"
     PERMISSIONS = "PERMISSIONS"
-    AS = "AS" # For aliasing imports, e.g., use Net as network;
+    AS = "AS"
 
     # Types
     TYPE_INT = "INT_TYPE"
@@ -76,36 +76,17 @@ class Token:
     line: int = 1
     column: int = 1
 
-# Keywords mapping
 keywords = {
-    "function": TokenType.FUNCTION,
-    "let": TokenType.LET,
-    "const": TokenType.CONST,
-    "var": TokenType.VAR,
-    "true": TokenType.TRUE,
-    "false": TokenType.FALSE,
-    "if": TokenType.IF,
-    "else": TokenType.ELSE,
-    "return": TokenType.RETURN,
-    "while": TokenType.WHILE,
-    "for": TokenType.FOR,
-    "switch": TokenType.SWITCH,
-    "module": TokenType.MODULE,
-    "use": TokenType.USE,
-    "component": TokenType.COMPONENT,
-    "public": TokenType.PUBLIC,
-    "private": TokenType.PRIVATE,
-    "import": TokenType.IMPORT,
-    "license": TokenType.LICENSE,
-    "permissions": TokenType.PERMISSIONS,
-    "as": TokenType.AS,
-    "int": TokenType.TYPE_INT,
-    "float": TokenType.TYPE_FLOAT,
-    "bool": TokenType.TYPE_BOOL,
-    "string": TokenType.TYPE_STRING,
-    "void": TokenType.TYPE_VOID,
+    "function": TokenType.FUNCTION, "let": TokenType.LET, "const": TokenType.CONST,
+    "var": TokenType.VAR, "true": TokenType.TRUE, "false": TokenType.FALSE,
+    "if": TokenType.IF, "else": TokenType.ELSE, "return": TokenType.RETURN,
+    "while": TokenType.WHILE, "for": TokenType.FOR, "switch": TokenType.SWITCH,
+    "module": TokenType.MODULE, "use": TokenType.USE, "component": TokenType.COMPONENT,
+    "public": TokenType.PUBLIC, "private": TokenType.PRIVATE, "import": TokenType.IMPORT,
+    "license": TokenType.LICENSE, "permissions": TokenType.PERMISSIONS, "as": TokenType.AS,
+    "int": TokenType.TYPE_INT, "float": TokenType.TYPE_FLOAT, "bool": TokenType.TYPE_BOOL,
+    "string": TokenType.TYPE_STRING, "void": TokenType.TYPE_VOID,
 }
 
 def lookup_ident(ident: str) -> TokenType:
-    """Looks up an identifier to see if it's a keyword."""
     return keywords.get(ident, TokenType.IDENT)

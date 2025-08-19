@@ -1,53 +1,29 @@
 from orion.ast import ast
 from orion.object import object as obj
-from orion.evaluator.environment import Environment
-from orion.object.object import Function
+from .environment import new_enclosed_environment, Environment
 
-# Singleton references
-TRUE = obj.TRUE
-FALSE = obj.FALSE
-NULL = obj.NULL
+# --- Singleton References ---
+TRUE, FALSE, NULL = obj.TRUE, obj.FALSE, obj.NULL
 
 def eval_node(node: ast.Node, env: Environment):
-    """The main evaluation function. It dispatches to other functions based on node type."""
-
-    # Statements
-    if isinstance(node, ast.Program):
-        return eval_program(node.statements, env)
-    if isinstance(node, ast.BlockStatement):
-        return eval_block_statement(node.statements, env)
-    if isinstance(node, ast.ExpressionStatement):
-        return eval_node(node.expression, env)
+    # --- Statements ---
+    if isinstance(node, ast.Program): return eval_program(node, env)
+    if isinstance(node, ast.BlockStatement): return eval_block_statement(node, env)
+    if isinstance(node, ast.ExpressionStatement): return eval_node(node.expression, env)
     if isinstance(node, ast.ReturnStatement):
         val = eval_node(node.return_value, env)
         return obj.ReturnValue(val)
     if isinstance(node, ast.VarStatement):
         val = eval_node(node.value, env)
         env.set(node.name.value, val)
-        return val # Assignment can be an expression in some languages
-    if isinstance(node, ast.IfStatement):
-        return eval_if_statement(node, env)
+        return val
 
-    # Expressions
-    if isinstance(node, ast.IntegerLiteral):
-        return obj.Integer(node.value)
-    if isinstance(node, ast.StringLiteral):
-        return obj.String(node.value)
-    if isinstance(node, ast.Boolean):
-        return TRUE if node.value else FALSE
-    if isinstance(node, ast.Identifier):
-        return eval_identifier(node, env)
-    if isinstance(node, ast.FunctionStatement):
-        params = node.parameters
-        body = node.body
-        func = Function(parameters=params, body=body, env=env)
-        if node.name: # A named function is just stored in the env
-            env.set(node.name.value, func)
-        return func # This path is for when a function is an expression, but we don't support that yet
-    if isinstance(node, ast.FunctionLiteral):
-        params = node.parameters
-        body = node.body
-        return Function(parameters=params, body=body, env=env)
+    # --- Expressions ---
+    if isinstance(node, ast.IntegerLiteral): return obj.Integer(node.value)
+    if isinstance(node, ast.StringLiteral): return obj.String(node.value)
+    if isinstance(node, ast.Boolean): return TRUE if node.value else FALSE
+    if isinstance(node, ast.ArrayLiteral): return obj.Array([eval_node(e, env) for e in node.elements])
+    if isinstance(node, ast.HashLiteral): return eval_hash_literal(node, env)
     if isinstance(node, ast.PrefixExpression):
         right = eval_node(node.right, env)
         return eval_prefix_expression(node.operator, right)
@@ -55,117 +31,127 @@ def eval_node(node: ast.Node, env: Environment):
         left = eval_node(node.left, env)
         right = eval_node(node.right, env)
         return eval_infix_expression(node.operator, left, right)
+    if isinstance(node, ast.IfStatement): # Treated as an expression
+        return eval_if_expression(node, env)
+    if isinstance(node, ast.Identifier): return eval_identifier(node, env)
+    if isinstance(node, ast.FunctionLiteral):
+        return obj.Function(node.parameters, node.body, env)
     if isinstance(node, ast.CallExpression):
         function = eval_node(node.function, env)
-        args = eval_expressions(node.arguments, env)
+        args = [eval_node(arg, env) for arg in node.arguments]
         return apply_function(function, args)
+    if isinstance(node, ast.IndexExpression):
+        left = eval_node(node.left, env)
+        index = eval_node(node.index, env)
+        return eval_index_expression(left, index)
 
     return None
 
-def apply_function(fn: obj.Object, args: list[obj.Object]):
-    if isinstance(fn, Function):
-        extended_env = extend_function_env(fn, args)
-        evaluated = eval_node(fn.body, extended_env)
-        return unwrap_return_value(evaluated)
-
-    if isinstance(fn, obj.Builtin):
-        return fn.fn(*args)
-
-    # Handle error: trying to call a non-function
-    return NULL
-
-def extend_function_env(fn: Function, args: list[obj.Object]) -> Environment:
-    from .environment import new_enclosed_environment
-    env = new_enclosed_environment(fn.env)
-    for i, param in enumerate(fn.parameters):
-        env.set(param.value, args[i])
-    return env
-
-def eval_expressions(exps: list[ast.Expression], env: Environment) -> list[obj.Object]:
-    result = []
-    for exp in exps:
-        evaluated = eval_node(exp, env)
-        result.append(evaluated)
-    return result
-
-def unwrap_return_value(ret_val: obj.Object) -> obj.Object:
-    if isinstance(ret_val, obj.ReturnValue):
-        return ret_val.value
-    return ret_val
-
-def eval_program(stmts: list[ast.Statement], env: Environment):
+# --- Evaluator Helpers ---
+def eval_program(program: ast.Program, env: Environment):
     result = None
-    for stmt in stmts:
-        result = eval_node(stmt, env)
+    for statement in program.statements:
+        result = eval_node(statement, env)
         if isinstance(result, obj.ReturnValue):
             return result.value
     return result
 
-def eval_block_statement(stmts: list[ast.Statement], env: Environment):
+def eval_block_statement(block: ast.BlockStatement, env: Environment):
     result = None
-    for stmt in stmts:
-        result = eval_node(stmt, env)
-        if result is not None and result.object_type() == obj.ObjectType.RETURN_VALUE:
+    for statement in block.statements:
+        result = eval_node(statement, env)
+        if result and isinstance(result, obj.ReturnValue):
             return result
     return result
 
 def eval_prefix_expression(operator: str, right: obj.Object):
-    if operator == "!":
-        return eval_bang_operator_expression(right)
+    if operator == "!": return native_bool_to_boolean_object(not is_truthy(right))
     if operator == "-":
-        return eval_minus_prefix_operator_expression(right)
+        if not right or right.object_type() != obj.ObjectType.INTEGER: return NULL
+        return obj.Integer(-right.value)
     return NULL
-
-def eval_bang_operator_expression(right: obj.Object):
-    return FALSE if is_truthy(right) else TRUE
-
-def eval_minus_prefix_operator_expression(right: obj.Object):
-    if right.object_type() != obj.ObjectType.INTEGER:
-        return NULL
-    return obj.Integer(-right.value)
 
 def eval_infix_expression(operator: str, left: obj.Object, right: obj.Object):
     if left.object_type() == obj.ObjectType.INTEGER and right.object_type() == obj.ObjectType.INTEGER:
         return eval_integer_infix_expression(operator, left, right)
     if left.object_type() == obj.ObjectType.STRING and right.object_type() == obj.ObjectType.STRING:
-        if operator == "+":
-            return obj.String(left.value + right.value)
-        # Other string ops could go here
-    if operator == "==":
-        return native_bool_to_boolean_object(left is right)
-    if operator == "!=":
-        return native_bool_to_boolean_object(left is not right)
+        if operator == "+": return obj.String(left.value + right.value)
+    if operator == "==": return native_bool_to_boolean_object(left == right)
+    if operator == "!=": return native_bool_to_boolean_object(left != right)
     return NULL
 
-def eval_integer_infix_expression(operator: str, left: obj.Integer, right: obj.Integer):
-    left_val, right_val = left.value, right.value
-    if operator == "+": return obj.Integer(left_val + right_val)
-    if operator == "-": return obj.Integer(left_val - right_val)
-    if operator == "*": return obj.Integer(left_val * right_val)
-    if operator == "/": return obj.Integer(left_val // right_val)
-    if operator == "<": return native_bool_to_boolean_object(left_val < right_val)
-    if operator == ">": return native_bool_to_boolean_object(left_val > right_val)
-    if operator == "==": return native_bool_to_boolean_object(left_val == right_val)
-    if operator == "!=": return native_bool_to_boolean_object(left_val != right_val)
+def eval_integer_infix_expression(op: str, left: obj.Integer, right: obj.Integer):
+    l, r = left.value, right.value
+    if op == "+": return obj.Integer(l + r)
+    if op == "-": return obj.Integer(l - r)
+    if op == "*": return obj.Integer(l * r)
+    if op == "/": return obj.Integer(l // r)
+    if op == "<": return native_bool_to_boolean_object(l < r)
+    if op == ">": return native_bool_to_boolean_object(l > r)
+    if op == "==": return native_bool_to_boolean_object(l == r)
+    if op == "!=": return native_bool_to_boolean_object(l != r)
     return NULL
 
-def eval_if_statement(node: ast.IfStatement, env: Environment):
-    condition = eval_node(node.condition, env)
+def eval_if_expression(ie: ast.IfStatement, env: Environment):
+    condition = eval_node(ie.condition, env)
     if is_truthy(condition):
-        return eval_node(node.consequence, env)
-    elif node.alternative is not None:
-        return eval_node(node.alternative, env)
+        return eval_node(ie.consequence, env)
+    elif ie.alternative:
+        return eval_node(ie.alternative, env)
     else:
         return NULL
 
-def eval_identifier(node: ast.Identifier, env: Environment) -> obj.Object:
+def eval_identifier(node: ast.Identifier, env: Environment):
+    from .builtins import builtins
     val = env.get(node.value)
-    if val is None:
-        # For now, we'll just return NULL if a variable is not found.
-        # Later, this should be a runtime error.
-        return NULL
-    return val
+    if val: return val
+    if node.value in builtins: return builtins[node.value]
+    return NULL # Error: identifier not found
 
+def eval_hash_literal(node: ast.HashLiteral, env: Environment) -> obj.Object:
+    pairs = {}
+    for key_node, value_node in node.pairs:
+        key = eval_node(key_node, env)
+        if not isinstance(key, obj.Hashable): return NULL # Error
+        value = eval_node(value_node, env)
+        hashed = key.hash_key()
+        pairs[hashed] = obj.HashPair(key=key, value=value)
+    return obj.Hash(pairs=pairs)
+
+def eval_index_expression(left: obj.Object, index: obj.Object):
+    if left.object_type() == obj.ObjectType.ARRAY and index.object_type() == obj.ObjectType.INTEGER:
+        return eval_array_index_expression(left, index)
+    if left.object_type() == obj.ObjectType.HASH:
+        return eval_hash_index_expression(left, index)
+    return NULL
+
+def eval_array_index_expression(array: obj.Array, index: obj.Integer):
+    idx = index.value
+    max_idx = len(array.elements) - 1
+    if idx < 0 or idx > max_idx: return NULL
+    return array.elements[idx]
+
+def eval_hash_index_expression(hash_obj: obj.Hash, index: obj.Object):
+    if not isinstance(index, obj.Hashable): return NULL
+    key = index.hash_key()
+    pair = hash_obj.pairs.get(key)
+    if not pair: return NULL
+    return pair.value
+
+def apply_function(fn: obj.Object, args: list[obj.Object]):
+    if isinstance(fn, obj.Function):
+        extended_env = new_enclosed_environment(fn.env)
+        for i, param in enumerate(fn.parameters):
+            extended_env.set(param.value, args[i])
+        evaluated = eval_node(fn.body, extended_env)
+        if isinstance(evaluated, obj.ReturnValue):
+            return evaluated.value
+        return evaluated
+    if isinstance(fn, obj.Builtin):
+        return fn.fn(*args)
+    return NULL # Error: not a function
+
+# --- Utilities ---
 def is_truthy(evaluated_obj: obj.Object) -> bool:
     if evaluated_obj is NULL: return False
     if evaluated_obj is FALSE: return False
