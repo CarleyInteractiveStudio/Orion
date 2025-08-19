@@ -34,7 +34,11 @@ def main():
 
 
     print("\n[2/2] Evaluating (Partial Implementation)...")
+    from orion.evaluator.builtins import builtins
     env = new_environment()
+    for name, fn in builtins.items():
+        env.set(name, fn)
+
     evaluated = eval_node(program, env)
 
     print("\n--- Evaluator Result ---")

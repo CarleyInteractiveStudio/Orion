@@ -31,6 +31,8 @@ def eval_node(node: ast.Node, env: Environment):
     # Expressions
     if isinstance(node, ast.IntegerLiteral):
         return obj.Integer(node.value)
+    if isinstance(node, ast.StringLiteral):
+        return obj.String(node.value)
     if isinstance(node, ast.Boolean):
         return TRUE if node.value else FALSE
     if isinstance(node, ast.Identifier):
@@ -61,14 +63,16 @@ def eval_node(node: ast.Node, env: Environment):
     return None
 
 def apply_function(fn: obj.Object, args: list[obj.Object]):
-    if not isinstance(fn, Function):
-        # Handle error: trying to call a non-function
-        return NULL
+    if isinstance(fn, Function):
+        extended_env = extend_function_env(fn, args)
+        evaluated = eval_node(fn.body, extended_env)
+        return unwrap_return_value(evaluated)
 
-    extended_env = extend_function_env(fn, args)
-    evaluated = eval_node(fn.body, extended_env)
+    if isinstance(fn, obj.Builtin):
+        return fn.fn(*args)
 
-    return unwrap_return_value(evaluated)
+    # Handle error: trying to call a non-function
+    return NULL
 
 def extend_function_env(fn: Function, args: list[obj.Object]) -> Environment:
     from .environment import new_enclosed_environment
@@ -123,6 +127,10 @@ def eval_minus_prefix_operator_expression(right: obj.Object):
 def eval_infix_expression(operator: str, left: obj.Object, right: obj.Object):
     if left.object_type() == obj.ObjectType.INTEGER and right.object_type() == obj.ObjectType.INTEGER:
         return eval_integer_infix_expression(operator, left, right)
+    if left.object_type() == obj.ObjectType.STRING and right.object_type() == obj.ObjectType.STRING:
+        if operator == "+":
+            return obj.String(left.value + right.value)
+        # Other string ops could go here
     if operator == "==":
         return native_bool_to_boolean_object(left is right)
     if operator == "!=":

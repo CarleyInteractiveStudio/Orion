@@ -1,6 +1,7 @@
 from enum import Enum
 from abc import ABC, abstractmethod
 
+from typing import Callable
 from orion.ast import ast
 
 class ObjectType(Enum):
@@ -10,6 +11,7 @@ class ObjectType(Enum):
     NULL = "NULL"
     RETURN_VALUE = "RETURN_VALUE"
     FUNCTION = "FUNCTION"
+    BUILTIN = "BUILTIN"
 
 class Object(ABC):
     @abstractmethod
@@ -82,6 +84,16 @@ class Function(Object):
     def to_string(self) -> str:
         params = ", ".join(str(p) for p in self.parameters)
         return f"function({params}) {{\n  {self.body}\n}}"
+
+class Builtin(Object):
+    def __init__(self, fn: Callable[..., Object]):
+        self.fn = fn
+
+    def object_type(self) -> ObjectType:
+        return ObjectType.BUILTIN
+
+    def to_string(self) -> str:
+        return "builtin function"
 
 # Singleton instances for performance and convenience
 TRUE = Boolean(True)
