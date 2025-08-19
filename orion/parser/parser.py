@@ -5,7 +5,8 @@ from orion.ast.ast import (
     ExpressionStatement, Expression, IntegerLiteral, PrefixExpression,
     InfixExpression, ModuleStatement, UseStatement, BlockStatement,
     FunctionStatement, IfStatement, StringLiteral, CallExpression,
-    MemberAccessExpression, ComponentStatement, StyleProperty, HexLiteral
+    MemberAccessExpression, ComponentStatement, StyleProperty, HexLiteral,
+    Boolean
 )
 
 # Operator precedence constants
@@ -51,6 +52,8 @@ class Parser:
             TokenType.MINUS: self.parse_prefix_expression,
             TokenType.STRING: self.parse_string_literal,
             TokenType.HASH: self.parse_hash_literal,
+            TokenType.TRUE: self.parse_boolean,
+            TokenType.FALSE: self.parse_boolean,
         }
         self.prefix_parse_fns[TokenType.LPAREN] = self.parse_grouped_expression
         self.infix_parse_fns = {
@@ -223,6 +226,9 @@ class Parser:
 
         return exp
 
+    def parse_boolean(self) -> Expression:
+        return Boolean(token=self.current_token, value=self.current_token_is(TokenType.TRUE))
+
     def parse_string_literal(self) -> Expression:
         return StringLiteral(token=self.current_token, value=self.current_token.literal)
 
@@ -275,26 +281,20 @@ class Parser:
 
     def parse_component_body(self) -> list[Statement]:
         body = []
+        self.next_token() # Consume '{'
 
-        while not self.peek_token_is(TokenType.RBRACE) and not self.peek_token_is(TokenType.EOF):
-            self.next_token() # Consume '{' or previous ';' or '}'
-
-            if self.current_token_is(TokenType.RBRACE):
-                break
-
-            # Check if it's a style property (IDENT followed by COLON)
+        while not self.current_token_is(TokenType.RBRACE) and not self.current_token_is(TokenType.EOF):
+            stmt = None
             if self.current_token_is(TokenType.IDENT) and self.peek_token_is(TokenType.COLON):
                 prop_name = self.parse_identifier()
-                self.next_token() # consume the ':'
-                self.next_token() # move to the first value token
+                self.next_token() # consume ':'
+                self.next_token() # move to value
 
                 values = []
                 while not self.current_token_is(TokenType.SEMICOLON):
-                    # Special case for '16px' -> treat as one expression for now
                     if self.current_token_is(TokenType.INT) and self.peek_token_is(TokenType.IDENT):
-                         # This is a hack, a better solution is a custom dimension type
                          val = StringLiteral(token=self.current_token, value=f"{self.current_token.literal}{self.peek_token.literal}")
-                         self.next_token() # consume ident
+                         self.next_token()
                          values.append(val)
                     else:
                         values.append(self.parse_expression(LOWEST))
@@ -304,16 +304,16 @@ class Parser:
 
                     self.next_token()
 
-                style_prop = StyleProperty(token=prop_name.token, name=prop_name, values=values)
-                body.append(style_prop)
+                stmt = StyleProperty(token=prop_name.token, name=prop_name, values=values)
 
-            # Check if it's a nested block (IDENT followed by LBRACE)
             elif self.current_token_is(TokenType.IDENT) and self.peek_token_is(TokenType.LBRACE):
-                 nested_block = self.parse_nested_style_block()
-                 body.append(nested_block)
+                stmt = self.parse_nested_style_block()
 
-        if not self.current_token_is(TokenType.RBRACE):
-            self.next_token() # Consume '}'
+            if stmt is not None:
+                body.append(stmt)
+            else:
+                # If no statement was parsed, advance to avoid infinite loop on error
+                self.next_token()
 
         return body
 

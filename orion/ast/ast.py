@@ -72,6 +72,17 @@ class PrefixExpression(Expression):
         return f"({self.operator}{str(self.right)})"
 
 @dataclass
+class Boolean(Expression):
+    token: Token
+    value: bool
+
+    def token_literal(self) -> str:
+        return self.token.literal
+
+    def __str__(self) -> str:
+        return self.token.literal
+
+@dataclass
 class InfixExpression(Expression):
     token: Token  # The operator token, e.g. +
     left: Expression
