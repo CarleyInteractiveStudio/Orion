@@ -1,6 +1,12 @@
 from orion.ast import ast
 from orion.object import object as obj
-from .environment import new_enclosed_environment, Environment
+from orion.object.object import Module, Component
+from .environment import new_enclosed_environment, Environment, new_environment
+from orion.lexer.lexer import Lexer
+from orion.parser.parser import Parser
+
+# --- Module Cache (Mock File System) ---
+MODULE_CACHE = {}
 
 # --- Singleton References ---
 TRUE, FALSE, NULL = obj.TRUE, obj.FALSE, obj.NULL
@@ -17,6 +23,8 @@ def eval_node(node: ast.Node, env: Environment):
         val = eval_node(node.value, env)
         env.set(node.name.value, val)
         return val
+    if isinstance(node, ast.UseStatement):
+        return eval_use_statement(node, env)
 
     # --- Expressions ---
     if isinstance(node, ast.IntegerLiteral): return obj.Integer(node.value)
@@ -33,6 +41,10 @@ def eval_node(node: ast.Node, env: Environment):
         return eval_infix_expression(node.operator, left, right)
     if isinstance(node, ast.IfStatement): # Treated as an expression
         return eval_if_expression(node, env)
+    if isinstance(node, ast.ComponentStatement):
+        return eval_component_statement(node, env)
+    if isinstance(node, ast.StyleProperty):
+        return eval_style_property(node, env)
     if isinstance(node, ast.Identifier): return eval_identifier(node, env)
     if isinstance(node, ast.FunctionLiteral):
         return obj.Function(node.parameters, node.body, env)
@@ -44,6 +56,9 @@ def eval_node(node: ast.Node, env: Environment):
         left = eval_node(node.left, env)
         index = eval_node(node.index, env)
         return eval_index_expression(left, index)
+    if isinstance(node, ast.MemberAccessExpression):
+        left = eval_node(node.object, env)
+        return eval_member_access_expression(left, node.property)
 
     return None
 
@@ -156,6 +171,70 @@ def is_truthy(evaluated_obj: obj.Object) -> bool:
     if evaluated_obj is NULL: return False
     if evaluated_obj is FALSE: return False
     return True
+
+def eval_use_statement(node: ast.UseStatement, env: Environment):
+    module_name = node.path.value
+
+    # Check if module is already evaluated
+    if module_name in MODULE_CACHE:
+        module_obj = MODULE_CACHE[module_name]
+        env.set(module_name, module_obj)
+        return module_obj
+
+    # If not, get source, parse, and eval
+    source_code = MODULE_CACHE.get(f"{module_name}_source")
+    if not source_code:
+        return NULL # Error: module source not found
+
+    lexer = Lexer(source_code)
+    parser = Parser(lexer)
+    program = parser.parse_program()
+
+    module_env = new_environment()
+    eval_node(program, module_env)
+
+    module_obj = obj.Module(name=module_name, env=module_env)
+    MODULE_CACHE[module_name] = module_obj
+    env.set(module_name, module_obj)
+
+    return module_obj
+
+def eval_member_access_expression(left: obj.Object, prop: ast.Identifier):
+    if left.object_type() == obj.ObjectType.MODULE:
+        return left.env.get(prop.value)
+
+    return NULL # Or error
+
+def eval_component_statement(node: ast.ComponentStatement, env: Environment):
+    # Create a new environment for the component's properties
+    prop_env = new_environment()
+
+    # Evaluate each statement in the component's body to populate the prop_env
+    for stmt in node.body:
+        eval_node(stmt, prop_env)
+
+    # The properties are stored in the prop_env's store. We can wrap this in a Hash object.
+    # This is a bit of a simplification, as we're not handling nested components correctly yet.
+    properties_hash = obj.Hash(pairs={})
+    for key, val in prop_env.store.items():
+        # This is a simplification; we'd need to handle hash keys properly
+        key_obj = obj.String(key)
+        properties_hash.pairs[key_obj.hash_key()] = obj.HashPair(key=key_obj, value=val)
+
+    comp = Component(name=node.name.value, properties=properties_hash)
+    env.set(node.name.value, comp)
+    return comp
+
+def eval_style_property(node: ast.StyleProperty, env: Environment):
+    # A style property is like a variable declaration in the component's scope
+    # We evaluate the list of values and store it. A single value is just a list of one.
+    # For simplicity, we'll just store the first value if it exists.
+    if len(node.values) > 0:
+        val = eval_node(node.values[0], env)
+        env.set(node.name.value, val)
+        return val
+    return NULL
+
 
 def native_bool_to_boolean_object(value: bool) -> obj.Boolean:
     return TRUE if value else FALSE

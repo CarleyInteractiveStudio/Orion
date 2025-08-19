@@ -15,6 +15,8 @@ class ObjectType(Enum):
     BUILTIN = "BUILTIN"
     ARRAY = "ARRAY"
     HASH = "HASH"
+    MODULE = "MODULE"
+    COMPONENT = "COMPONENT"
 
 class Object(ABC):
     @abstractmethod
@@ -88,6 +90,28 @@ class Hash(Object):
     def __init__(self, pairs: dict[HashKey, HashPair]): self.pairs = pairs
     def object_type(self) -> ObjectType: return ObjectType.HASH
     def to_string(self) -> str: return f"{{{', '.join(f'{p.key.to_string()}:{p.value.to_string()}' for p in self.pairs.values())}}}"
+
+class Module(Object):
+    def __init__(self, name: str, env: 'Environment'):
+        self.name = name
+        self.env = env
+
+    def object_type(self) -> ObjectType:
+        return ObjectType.MODULE
+
+    def to_string(self) -> str:
+        return f"<module '{self.name}'>"
+
+class Component(Object):
+    def __init__(self, name: str, properties: Hash):
+        self.name = name
+        self.properties = properties
+
+    def object_type(self) -> ObjectType:
+        return ObjectType.COMPONENT
+
+    def to_string(self) -> str:
+        return f"<component '{self.name}'>"
 
 # Singleton instances for performance and convenience
 TRUE = Boolean(True)

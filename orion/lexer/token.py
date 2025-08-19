@@ -11,6 +11,7 @@ class TokenType(Enum):
     INT = "INT"
     FLOAT = "FLOAT"
     STRING = "STRING"
+    DIMENSION = "DIMENSION" # e.g., 16px, 100%
 
     # Operators
     ASSIGN = "="

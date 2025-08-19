@@ -1,7 +1,7 @@
 import sys
 from orion.lexer.lexer import Lexer
 from orion.parser.parser import Parser
-from orion.evaluator.evaluator import eval_node
+from orion.evaluator import evaluator
 from orion.evaluator.environment import new_environment
 
 def main():
@@ -10,15 +10,23 @@ def main():
     """
     print("--- Running Orion Toolchain ---")
 
-    test_file = "test.orion"
+    # --- Load Modules into Cache (for main test file) ---
+    evaluator.MODULE_CACHE["UI_source"] = "let createWindow = function(title, size) {};"
+    evaluator.MODULE_CACHE["Hardware_source"] = """
+let sensor = {"read": function(name) { return 76; }};
+let fan = {"setSpeed": function(speed) {}};
+"""
+
+    # --- Load Main File ---
+    main_file = "test.orion"
     try:
-        with open(test_file, "r", encoding="utf-8") as f:
+        with open(main_file, "r", encoding="utf-8") as f:
             source_code = f.read()
     except FileNotFoundError:
-        print(f"Error: {test_file} not found.")
+        print(f"Error: {main_file} not found.")
         sys.exit(1)
 
-    # 1. Lexing & Parsing
+    # --- Run Toolchain ---
     print("\n[1/2] Parsing...")
     lexer = Lexer(source_code)
     parser = Parser(lexer)
@@ -32,14 +40,12 @@ def main():
     else:
         print("--- Parsing Successful ---")
 
-    # 2. Evaluation
     print("\n[2/2] Evaluating...")
-    from orion.evaluator.builtins import builtins
     env = new_environment()
-    for name, fn in builtins.items():
-        env.set(name, fn)
+    # injecting built-ins is now handled inside the evaluator for simplicity
+    # in a real scenario, this would be more robust
 
-    evaluated = eval_node(program, env)
+    evaluated = evaluator.eval_node(program, env)
 
     print("\n--- Evaluator Result ---")
     if evaluated is not None:

@@ -38,11 +38,17 @@ class Parser:
         return program
 
     def parse_statement(self) -> ast.Statement:
+        if self.current_token_is(TokenType.MODULE):
+            return self.parse_module_statement()
+        if self.current_token_is(TokenType.USE):
+            return self.parse_use_statement()
+        if self.current_token_is(TokenType.COMPONENT):
+            return self.parse_component_statement()
         if self.current_token_is(TokenType.VAR) or self.current_token_is(TokenType.LET):
             return self.parse_var_statement()
         if self.current_token_is(TokenType.RETURN):
             return self.parse_return_statement()
-        # Add other statement types here later (module, component, etc.)
+        # Add other statement types here later (component, etc.)
         return self.parse_expression_statement()
 
     def parse_expression(self, precedence: int) -> ast.Expression:
@@ -83,6 +89,66 @@ class Parser:
         if self.peek_token_is(TokenType.SEMICOLON): self.next_token()
         return stmt
 
+    def parse_module_statement(self) -> ast.ModuleStatement:
+        token = self.current_token
+        if not self.expect_peek(TokenType.IDENT): return None
+        name = ast.Identifier(token=self.current_token, value=self.current_token.literal)
+        if not self.expect_peek(TokenType.SEMICOLON): return None
+        return ast.ModuleStatement(token=token, name=name)
+
+    def parse_use_statement(self) -> ast.UseStatement:
+        token = self.current_token
+        if not self.expect_peek(TokenType.IDENT): return None
+        path = ast.Identifier(token=self.current_token, value=self.current_token.literal)
+        # Not handling 'as' for now
+        if not self.expect_peek(TokenType.SEMICOLON): return None
+        return ast.UseStatement(token=token, path=path)
+
+    def parse_component_statement(self) -> ast.ComponentStatement:
+        token = self.current_token
+        if not self.expect_peek(TokenType.IDENT): return None
+        name = ast.Identifier(token=self.current_token, value=self.current_token.literal)
+        if not self.expect_peek(TokenType.LBRACE): return None
+        body = self.parse_component_body()
+        return ast.ComponentStatement(token=token, name=name, body=body)
+
+    def parse_component_body(self) -> list[ast.Statement]:
+        body = []
+        self.next_token() # Consume '{'
+        while not self.current_token_is(TokenType.RBRACE) and not self.current_token_is(TokenType.EOF):
+            stmt = self.parse_style_property_or_nested_block()
+            if stmt:
+                body.append(stmt)
+            # Advancing is handled by the sub-parsers or the main loop
+        return body
+
+    def parse_style_property_or_nested_block(self) -> ast.Statement:
+        if not self.current_token_is(TokenType.IDENT):
+            self.errors.append("Expected identifier for style property or nested block")
+            self.next_token() # Consume to avoid loop
+            return None
+
+        if self.peek_token_is(TokenType.COLON): # It's a style property
+            name_token = self.current_token
+            name = ast.Identifier(token=name_token, value=name_token.literal)
+            self.next_token() # consume ident
+            self.next_token() # consume colon
+            values = self.parse_expression_list(TokenType.SEMICOLON)
+            return ast.StyleProperty(token=name_token, name=name, values=values)
+
+        elif self.peek_token_is(TokenType.LBRACE): # It's a nested block
+            name_token = self.current_token
+            name = ast.Identifier(token=name_token, value=name_token.literal)
+            self.next_token() # consume ident
+            self.next_token() # consume lbrace
+            body = self.parse_component_body()
+            return ast.ComponentStatement(token=name_token, name=name, body=body)
+
+        # If it's an identifier but not followed by : or {, it's an error
+        self.errors.append(f"Unexpected token {self.peek_token.literal} in component body")
+        self.next_token()
+        return None
+
     def parse_block_statement(self) -> ast.BlockStatement:
         block = ast.BlockStatement(token=self.current_token, statements=[])
         self.next_token()
@@ -98,6 +164,7 @@ class Parser:
     def parse_integer_literal(self) -> ast.Expression: return ast.IntegerLiteral(token=self.current_token, value=int(self.current_token.literal))
     def parse_string_literal(self) -> ast.Expression: return ast.StringLiteral(token=self.current_token, value=self.current_token.literal)
     def parse_boolean(self) -> ast.Expression: return ast.Boolean(token=self.current_token, value=self.current_token_is(TokenType.TRUE))
+    def parse_dimension_literal(self) -> ast.Expression: return ast.DimensionLiteral(token=self.current_token, value=self.current_token.literal)
     def parse_prefix_expression(self) -> ast.Expression:
         exp = ast.PrefixExpression(token=self.current_token, operator=self.current_token.literal)
         self.next_token()
@@ -161,6 +228,12 @@ class Parser:
         if not self.expect_peek(TokenType.RBRACKET): return None
         return ast.IndexExpression(token=token, left=left, index=index)
 
+    def parse_member_access_expression(self, left: ast.Expression) -> ast.Expression:
+        token = self.current_token # The '.' token
+        if not self.expect_peek(TokenType.IDENT): return None
+        prop = ast.Identifier(token=self.current_token, value=self.current_token.literal)
+        return ast.MemberAccessExpression(token=token, object=left, property=prop)
+
     # --- Expression Helpers ---
     def parse_expression_list(self, end: TokenType) -> list[ast.Expression]:
         elements = []
@@ -200,6 +273,7 @@ class Parser:
             TokenType.MINUS: self.parse_prefix_expression, TokenType.LPAREN: self.parse_grouped_expression,
             TokenType.IF: self.parse_if_statement, TokenType.FUNCTION: self.parse_function_literal,
             TokenType.LBRACKET: self.parse_array_literal, TokenType.LBRACE: self.parse_hash_literal,
+            TokenType.DIMENSION: self.parse_dimension_literal,
         }
     def _register_infix_fns(self):
         return {
@@ -208,6 +282,7 @@ class Parser:
             TokenType.EQ: self.parse_infix_expression, TokenType.NOT_EQ: self.parse_infix_expression,
             TokenType.LT: self.parse_infix_expression, TokenType.GT: self.parse_infix_expression,
             TokenType.LPAREN: self.parse_call_expression, TokenType.LBRACKET: self.parse_index_expression,
+            TokenType.DOT: self.parse_member_access_expression,
         }
     def next_token(self): self.current_token = self.peek_token; self.peek_token = self.lexer.next_token()
     def current_token_is(self, t: TokenType) -> bool: return self.current_token.token_type == t

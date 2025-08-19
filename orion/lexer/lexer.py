@@ -93,8 +93,7 @@ class Lexer:
                 literal = self.read_identifier()
                 return Token(lookup_ident(literal), literal, start_line, start_col)
             elif self.is_digit(self.ch):
-                literal, is_float = self.read_number()
-                tok_type = TokenType.FLOAT if is_float else TokenType.INT
+                literal, tok_type = self.read_number()
                 return Token(tok_type, literal, start_line, start_col)
             else:
                 tok = Token(TokenType.ILLEGAL, self.ch, start_line, start_col)
@@ -107,15 +106,21 @@ class Lexer:
         while self.is_letter(self.ch) or self.is_digit(self.ch): self.read_char()
         return self.source[start:self.position]
 
-    def read_number(self) -> (str, bool):
+    def read_number(self) -> (str, TokenType):
         start = self.position
-        is_float = False
+        tok_type = TokenType.INT
         while self.is_digit(self.ch): self.read_char()
         if self.ch == '.':
-            is_float = True
+            tok_type = TokenType.FLOAT
             self.read_char()
             while self.is_digit(self.ch): self.read_char()
-        return self.source[start:self.position], is_float
+
+        # Check for dimension suffix (e.g., px, %)
+        if self.is_letter(self.ch) or self.ch == '%':
+            tok_type = TokenType.DIMENSION
+            while self.is_letter(self.ch) or self.ch == '%': self.read_char()
+
+        return self.source[start:self.position], tok_type
 
     def read_string(self) -> str:
         self.read_char()

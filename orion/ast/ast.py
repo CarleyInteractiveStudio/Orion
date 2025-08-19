@@ -89,6 +89,18 @@ class CallExpression(Expression):
     def token_literal(self) -> str: return self.token.literal
     def __str__(self) -> str: return f"{self.function}({', '.join(str(a) for a in self.arguments)})"
 
+@dataclass
+class MemberAccessExpression(Expression):
+    token: Token; object: Expression; property: Identifier
+    def token_literal(self) -> str: return self.token.literal
+    def __str__(self) -> str: return f"({self.object}.{self.property})"
+
+@dataclass
+class DimensionLiteral(Expression):
+    token: Token; value: str
+    def token_literal(self) -> str: return self.token.literal
+    def __str__(self) -> str: return self.value
+
 # --- Statements ---
 @dataclass
 class BlockStatement(Statement):
@@ -115,7 +127,35 @@ class ExpressionStatement(Statement):
     def __str__(self) -> str: return str(self.expression)
 
 @dataclass
+class ModuleStatement(Statement):
+    token: Token; name: Identifier
+    def token_literal(self) -> str: return self.token.literal
+    def __str__(self) -> str: return f"module {self.name};"
+
+@dataclass
+class UseStatement(Statement):
+    token: Token; path: Expression; alias: Optional[Identifier] = None
+    def token_literal(self) -> str: return self.token.literal
+    def __str__(self) -> str:
+        s = f"use {self.path}"
+        if self.alias: s += f" as {self.alias}"
+        s += ";"
+        return s
+
+@dataclass
 class IfStatement(Statement):
     token: Token; condition: Expression; consequence: BlockStatement; alternative: Optional[BlockStatement] = None
     def token_literal(self) -> str: return self.token.literal
     def __str__(self) -> str: return f"if {self.condition} {{ {self.consequence} }} else {{ {self.alternative if self.alternative else ''} }}"
+
+@dataclass
+class StyleProperty(Statement):
+    token: Token; name: Identifier; values: List[Expression]
+    def token_literal(self) -> str: return self.token.literal
+    def __str__(self) -> str: return f"{self.name}: {', '.join(str(v) for v in self.values)};"
+
+@dataclass
+class ComponentStatement(Statement):
+    token: Token; name: Identifier; body: List[Statement]
+    def token_literal(self) -> str: return self.token.literal
+    def __str__(self) -> str: return f"component {self.name} {{ {''.join(str(s) for s in self.body)} }}"
