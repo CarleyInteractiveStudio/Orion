@@ -6,7 +6,7 @@ from orion.ast.ast import (
     InfixExpression, ModuleStatement, UseStatement, BlockStatement,
     FunctionStatement, IfStatement, StringLiteral, CallExpression,
     MemberAccessExpression, ComponentStatement, StyleProperty, HexLiteral,
-    Boolean
+    Boolean, FunctionLiteral
 )
 
 # Operator precedence constants
@@ -54,6 +54,7 @@ class Parser:
             TokenType.HASH: self.parse_hash_literal,
             TokenType.TRUE: self.parse_boolean,
             TokenType.FALSE: self.parse_boolean,
+            TokenType.FUNCTION: self.parse_function_literal,
         }
         self.prefix_parse_fns[TokenType.LPAREN] = self.parse_grouped_expression
         self.infix_parse_fns = {
@@ -228,6 +229,21 @@ class Parser:
 
     def parse_boolean(self) -> Expression:
         return Boolean(token=self.current_token, value=self.current_token_is(TokenType.TRUE))
+
+    def parse_function_literal(self) -> Expression:
+        token = self.current_token # 'function' token
+
+        if not self.expect_peek(TokenType.LPAREN):
+            return None
+
+        parameters = self.parse_function_parameters()
+
+        if not self.expect_peek(TokenType.LBRACE):
+            return None
+
+        body = self.parse_block_statement()
+
+        return FunctionLiteral(token=token, parameters=parameters, body=body)
 
     def parse_string_literal(self) -> Expression:
         return StringLiteral(token=self.current_token, value=self.current_token.literal)

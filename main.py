@@ -6,11 +6,11 @@ from orion.evaluator.environment import new_environment
 
 def main():
     """
-    Reads a test Orion file, parses it, evaluates it, and prints the result.
+    Reads the main Orion test file, parses it, and (in the future) evaluates it.
     """
-    print("--- Starting Orion Interpreter ---")
+    print("--- Running Orion Toolchain ---")
 
-    test_file = "interpreter_test.orion"
+    test_file = "test.orion"
     try:
         with open(test_file, "r", encoding="utf-8") as f:
             source_code = f.read()
@@ -18,21 +18,22 @@ def main():
         print(f"Error: {test_file} not found.")
         sys.exit(1)
 
-    print("[1/3] Lexing...")
+    print("\n[1/2] Lexing and Parsing...")
     lexer = Lexer(source_code)
-
-    print("[2/3] Parsing...")
     parser = Parser(lexer)
     program = parser.parse_program()
 
     if parser.errors:
-        print("--- Parser Errors ---")
+        print("--- Parser Errors Encountered (Known Limitations) ---")
         for msg in parser.errors:
             print(f"  - {msg}")
         print("--- End of Errors ---")
-        sys.exit(1)
+        # We don't exit here, to show that parsing can continue.
+    else:
+        print("--- Parsing Successful ---")
 
-    print("[3/3] Evaluating...")
+
+    print("\n[2/2] Evaluating (Partial Implementation)...")
     env = new_environment()
     evaluated = eval_node(program, env)
 
@@ -40,7 +41,7 @@ def main():
     if evaluated is not None:
         print(evaluated.to_string())
     else:
-        print("No result from evaluation (or result was NULL).")
+        print("Evaluation did not produce a final result.")
     print("--- End of Result ---")
 
 

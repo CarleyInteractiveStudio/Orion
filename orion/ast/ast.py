@@ -214,6 +214,19 @@ class BlockStatement(Statement):
         return "".join(str(s) for s in self.statements)
 
 @dataclass
+class FunctionLiteral(Expression):
+    token: Token # The 'function' token
+    parameters: List[Identifier]
+    body: BlockStatement
+
+    def token_literal(self) -> str:
+        return self.token.literal
+
+    def __str__(self) -> str:
+        params = ", ".join(str(p) for p in self.parameters)
+        return f"function({params}) {{ {self.body} }}"
+
+@dataclass
 class FunctionStatement(Statement):
     token: Token  # The 'function' token
     name: Identifier

@@ -1,12 +1,15 @@
 from enum import Enum
 from abc import ABC, abstractmethod
 
+from orion.ast import ast
+
 class ObjectType(Enum):
     INTEGER = "INTEGER"
     BOOLEAN = "BOOLEAN"
     STRING = "STRING"
     NULL = "NULL"
     RETURN_VALUE = "RETURN_VALUE"
+    FUNCTION = "FUNCTION"
 
 class Object(ABC):
     @abstractmethod
@@ -66,6 +69,19 @@ class ReturnValue(Object):
 
     def to_string(self) -> str:
         return self.value.to_string()
+
+class Function(Object):
+    def __init__(self, parameters: list[ast.Identifier], body: ast.BlockStatement, env: 'Environment'):
+        self.parameters = parameters
+        self.body = body
+        self.env = env
+
+    def object_type(self) -> ObjectType:
+        return ObjectType.FUNCTION
+
+    def to_string(self) -> str:
+        params = ", ".join(str(p) for p in self.parameters)
+        return f"function({params}) {{\n  {self.body}\n}}"
 
 # Singleton instances for performance and convenience
 TRUE = Boolean(True)

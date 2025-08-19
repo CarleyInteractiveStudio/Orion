@@ -1,6 +1,7 @@
 from orion.ast import ast
 from orion.object import object as obj
 from orion.evaluator.environment import Environment
+from orion.object.object import Function
 
 # Singleton references
 TRUE = obj.TRUE
@@ -34,6 +35,17 @@ def eval_node(node: ast.Node, env: Environment):
         return TRUE if node.value else FALSE
     if isinstance(node, ast.Identifier):
         return eval_identifier(node, env)
+    if isinstance(node, ast.FunctionStatement):
+        params = node.parameters
+        body = node.body
+        func = Function(parameters=params, body=body, env=env)
+        if node.name: # A named function is just stored in the env
+            env.set(node.name.value, func)
+        return func # This path is for when a function is an expression, but we don't support that yet
+    if isinstance(node, ast.FunctionLiteral):
+        params = node.parameters
+        body = node.body
+        return Function(parameters=params, body=body, env=env)
     if isinstance(node, ast.PrefixExpression):
         right = eval_node(node.right, env)
         return eval_prefix_expression(node.operator, right)
@@ -41,8 +53,41 @@ def eval_node(node: ast.Node, env: Environment):
         left = eval_node(node.left, env)
         right = eval_node(node.right, env)
         return eval_infix_expression(node.operator, left, right)
+    if isinstance(node, ast.CallExpression):
+        function = eval_node(node.function, env)
+        args = eval_expressions(node.arguments, env)
+        return apply_function(function, args)
 
     return None
+
+def apply_function(fn: obj.Object, args: list[obj.Object]):
+    if not isinstance(fn, Function):
+        # Handle error: trying to call a non-function
+        return NULL
+
+    extended_env = extend_function_env(fn, args)
+    evaluated = eval_node(fn.body, extended_env)
+
+    return unwrap_return_value(evaluated)
+
+def extend_function_env(fn: Function, args: list[obj.Object]) -> Environment:
+    from .environment import new_enclosed_environment
+    env = new_enclosed_environment(fn.env)
+    for i, param in enumerate(fn.parameters):
+        env.set(param.value, args[i])
+    return env
+
+def eval_expressions(exps: list[ast.Expression], env: Environment) -> list[obj.Object]:
+    result = []
+    for exp in exps:
+        evaluated = eval_node(exp, env)
+        result.append(evaluated)
+    return result
+
+def unwrap_return_value(ret_val: obj.Object) -> obj.Object:
+    if isinstance(ret_val, obj.ReturnValue):
+        return ret_val.value
+    return ret_val
 
 def eval_program(stmts: list[ast.Statement], env: Environment):
     result = None
