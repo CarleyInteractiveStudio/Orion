@@ -1,0 +1,8 @@
+component StatusLabel {
+    font: "Orbitron", 16px;
+    color: #00cc00;
+
+    warning {
+        color: #ff3300;
+    }
+}
