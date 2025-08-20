@@ -103,41 +103,63 @@ class Parser:
         return ast.UseStatement(token=token, path=path)
 
     def parse_component_statement(self) -> ast.ComponentStatement:
-        token = self.current_token
+        token = self.current_token # The 'component' token
         if not self.expect_peek(TokenType.IDENT): return None
+
         name = ast.Identifier(token=self.current_token, value=self.current_token.literal)
+
         if not self.expect_peek(TokenType.LBRACE): return None
+
         body = self.parse_component_body()
+
         return ast.ComponentStatement(token=token, name=name, body=body)
 
     def parse_component_body(self) -> list[ast.Statement]:
         body = []
-        self.next_token()
+        self.next_token() # Consume '{'
+
         while not self.current_token_is(TokenType.RBRACE) and not self.current_token_is(TokenType.EOF):
-            stmt = self.parse_style_property_or_nested_block()
-            if stmt: body.append(stmt)
+            stmt = self.parse_component_level_statement()
+            if stmt:
+                body.append(stmt)
+            self.next_token()
+
         return body
 
-    def parse_style_property_or_nested_block(self) -> ast.Statement:
-        if not self.current_token_is(TokenType.IDENT):
-            self.errors.append("Expected identifier for style property or nested block")
-            self.next_token()
-            return None
-        if self.peek_token_is(TokenType.COLON):
-            name_token = self.current_token
-            name = ast.Identifier(token=name_token, value=name_token.literal)
-            self.next_token(); self.next_token()
-            values = self.parse_expression_list(TokenType.SEMICOLON)
-            return ast.StyleProperty(token=name_token, name=name, values=values)
-        elif self.peek_token_is(TokenType.LBRACE):
-            name_token = self.current_token
-            name = ast.Identifier(token=name_token, value=name_token.literal)
-            self.next_token(); self.next_token()
-            body = self.parse_component_body()
-            return ast.ComponentStatement(token=name_token, name=name, body=body)
-        self.errors.append(f"Unexpected token {self.peek_token.literal} in component body")
-        self.next_token()
+    def parse_component_level_statement(self) -> ast.Statement:
+        if self.current_token_is(TokenType.IDENT) and self.peek_token_is(TokenType.COLON):
+            return self.parse_style_property()
+        if self.current_token_is(TokenType.IDENT) and self.peek_token_is(TokenType.LBRACE):
+            return self.parse_nested_block()
+
+        self.errors.append(f"Invalid token '{self.current_token.literal}' in component body")
         return None
+
+    def parse_style_property(self) -> ast.StyleProperty:
+        name_token = self.current_token
+        name = ast.Identifier(token=name_token, value=name_token.literal)
+
+        self.expect_peek(TokenType.COLON) # Consume ':'
+        self.next_token() # Move to first value
+
+        values = self.parse_expression_list(TokenType.SEMICOLON)
+        # parse_expression_list consumes the semicolon, so we are positioned for the next statement
+        return ast.StyleProperty(token=name_token, name=name, values=values)
+
+    def parse_nested_block(self) -> ast.ComponentStatement:
+        token = self.current_token
+        name = ast.Identifier(token=token, value=token.literal)
+
+        self.expect_peek(TokenType.LBRACE) # Consume '{'
+
+        body = self.parse_component_body()
+
+        # We expect to be on '}' here
+        if not self.current_token_is(TokenType.RBRACE):
+             self.errors.append(f"Expected '}}' to close nested block, got {self.current_token.token_type.name}")
+             return None
+
+        return ast.ComponentStatement(token=token, name=name, body=body)
 
     def parse_block_statement(self) -> ast.BlockStatement:
         block = ast.BlockStatement(token=self.current_token, statements=[])
