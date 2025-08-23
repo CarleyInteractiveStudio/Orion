@@ -109,16 +109,27 @@ class Lexer:
     def read_number(self) -> (str, TokenType):
         start = self.position
         tok_type = TokenType.INT
-        while self.is_digit(self.ch): self.read_char()
+        while self.is_digit(self.ch):
+            self.read_char()
+
+        # If a number is followed by a letter, it might be a hex identifier (e.g., 00ffcc)
+        # or a dimension (e.g. 16px). In this language, we'll treat them all as identifiers.
+        if self.is_letter(self.ch):
+            tok_type = TokenType.IDENT
+            while self.is_letter(self.ch) or self.is_digit(self.ch):
+                self.read_char()
+            return self.source[start:self.position], tok_type
+
         if self.ch == '.':
             tok_type = TokenType.FLOAT
             self.read_char()
-            while self.is_digit(self.ch): self.read_char()
+            while self.is_digit(self.ch):
+                self.read_char()
 
         # Check for dimension suffix (e.g., px, %)
-        if self.is_letter(self.ch) or self.ch == '%':
+        if self.ch == '%':
             tok_type = TokenType.DIMENSION
-            while self.is_letter(self.ch) or self.ch == '%': self.read_char()
+            self.read_char()
 
         return self.source[start:self.position], tok_type
 

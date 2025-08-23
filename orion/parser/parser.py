@@ -108,6 +108,7 @@ class Parser:
         name = ast.Identifier(token=self.current_token, value=self.current_token.literal)
 
         if not self.expect_peek(TokenType.LBRACE): return None
+        self.next_token() # Consume the LBRACE
 
         body = []
         # The LBRACE is consumed, now we are at the first token of the body
@@ -145,14 +146,14 @@ class Parser:
         name = ast.Identifier(token=token, value=token.literal)
 
         if not self.expect_peek(TokenType.LBRACE): return None
+        self.next_token() # Consume the LBRACE
 
         body = []
         while not self.current_token_is(TokenType.RBRACE) and not self.current_token_is(TokenType.EOF):
-            self.next_token()
-            if self.current_token_is(TokenType.RBRACE): break
             stmt = self.parse_component_level_statement()
             if stmt:
                 body.append(stmt)
+            self.next_token()
 
         # current_token is RBRACE
         return ast.ComponentStatement(token=token, name=name, body=body)
