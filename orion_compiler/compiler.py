@@ -206,11 +206,27 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
 
     # Placeholders for other features
     def visit_logical_expr(self, expr: ast.Logical): pass
-    def visit_get_expr(self, expr: ast.Get): pass
-    def visit_set_expr(self, expr: ast.Set): pass
+    def visit_get_expr(self, expr: ast.Get):
+        self._compile_expr(expr.object)
+        self._emit_bytes(OpCode.OP_GET_PROPERTY, self._make_constant(expr.name.lexeme))
+
+    def visit_set_expr(self, expr: ast.Set):
+        self._compile_expr(expr.object)
+        self._compile_expr(expr.value)
+        self._emit_bytes(OpCode.OP_SET_PROPERTY, self._make_constant(expr.name.lexeme))
+
     def visit_this_expr(self, expr: ast.This): pass
     def visit_component_stmt(self, stmt: ast.ComponentStmt): pass
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
-    def visit_use_stmt(self, stmt: ast.UseStmt): pass
+    def visit_use_stmt(self, stmt: ast.UseStmt):
+        # The operand for OP_USE will be the constant index of the module name.
+        self._emit_bytes(OpCode.OP_USE, self._make_constant(stmt.name.lexeme))
+
+        # After OP_USE, the namespace object is on the stack.
+        # Define it as a variable.
+        bind_name = stmt.alias.lexeme if stmt.alias else stmt.name.lexeme
+
+        # For now, modules can only be imported at the global scope.
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(bind_name))

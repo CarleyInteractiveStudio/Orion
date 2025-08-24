@@ -1,7 +1,9 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction
+from objects import OrionCompiledFunction, OrionNativeFunction, OrionInstance
+from tokens import Token
 from dataclasses import dataclass
 from typing import Any
+import time
 
 @dataclass
 class CallFrame:
@@ -20,9 +22,25 @@ class VM:
         self.stack: list = []
         self.globals: dict = {}
 
+        self._define_native("clock", 0, lambda: time.time())
+
+        def native_print(*args):
+            # A more robust version would handle stringifying Orion objects
+            print(*args)
+            return None
+        self._define_native("print", None, native_print) # Variadic
+
+    def _define_native(self, name: str, arity: int, func):
+        self.globals[name] = OrionNativeFunction(arity, func)
+
     def interpret(self, main_function: OrionCompiledFunction) -> InterpretResult:
+        # Reset stack and frames for a new run
+        self.stack = []
+        self.frames = []
+
+        # Set up the initial CallFrame for the main script body
+        self.stack.append(main_function)
         frame = CallFrame(main_function, 0, 0)
-        self.stack.append(main_function) # Push the main function itself onto the stack
         self.frames.append(frame)
 
         return self._run()
@@ -49,9 +67,10 @@ class VM:
                 result = self.pop()
                 self.frames.pop()
                 if not self.frames:
-                    self.pop() # Pop script function
                     return InterpretResult.OK, result
 
+                # Discard the function and its args from the stack
+                # and push the result for the caller.
                 self.stack = self.stack[:frame.slots_offset]
                 self.push(result)
                 frame = self.frames[-1]
@@ -59,7 +78,21 @@ class VM:
             elif instruction == OpCode.OP_CALL:
                 arg_count = read_byte()
                 callee = self.peek(arg_count)
-                if isinstance(callee, OrionCompiledFunction):
+
+                if isinstance(callee, OrionNativeFunction):
+                    # For variadic functions, arity check is skipped if arity is None
+                    if callee.arity is not None and arg_count != callee.arity:
+                        print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
+                        return InterpretResult.RUNTIME_ERROR, None
+
+                    # Get args, pop them and the function from the stack
+                    args = self.stack[-arg_count:]
+                    self.stack = self.stack[:-arg_count-1]
+
+                    result = callee.func(*args)
+                    self.push(result)
+
+                elif isinstance(callee, OrionCompiledFunction):
                     if arg_count != callee.arity:
                         print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
                         return InterpretResult.RUNTIME_ERROR, None
@@ -119,6 +152,54 @@ class VM:
             elif instruction == OpCode.OP_LOOP:
                 offset = read_short()
                 frame.ip -= offset
+
+            elif instruction == OpCode.OP_USE:
+                module_name = read_constant()
+                file_path = f"orion_compiler/{module_name}.orion"
+
+                from orion import Orion
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        source = f.read()
+                except FileNotFoundError:
+                    print(f"RuntimeError: Module file not found: '{file_path}'")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                module_runner = Orion()
+                module_runner.run(source)
+                module_globals = module_runner.vm.globals
+
+                namespace = OrionInstance()
+                namespace.fields = module_globals
+                self.push(namespace)
+
+            elif instruction == OpCode.OP_GET_PROPERTY:
+                instance = self.peek(0)
+                if not isinstance(instance, OrionInstance):
+                    print("RuntimeError: Only instances have properties.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                name = read_constant()
+                value = instance.get(Token(None, name, None, 0)) # Dummy token
+
+                self.pop() # Pop the instance
+                self.push(value)
+
+            elif instruction == OpCode.OP_SET_PROPERTY:
+                instance = self.peek(1)
+                if not isinstance(instance, OrionInstance):
+                    print("RuntimeError: Only instances have properties.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                name = read_constant()
+                value = self.peek(0)
+                instance.set(Token(None, name, None, 0), value)
+
+                # Pop the value, then the instance, then push the value back
+                self.pop()
+                self.pop()
+                self.push(value)
+
 
     def _is_falsey(self, value) -> bool:
         return value is None or (isinstance(value, bool) and not value)

@@ -1,4 +1,6 @@
 import sys
+import io
+from contextlib import redirect_stdout
 
 from lexer import Lexer
 from parser import Parser
@@ -27,10 +29,6 @@ def run_vm_test(name, source_code, expected_value):
         print(f"FAIL: {name} - Compiler returned None.")
         return False
 
-    print("\n--- Disassembly ---")
-    disassemble_chunk(main_function.chunk, f"{name} Chunk")
-    print("-------------------\n")
-
     vm = VM()
     result, final_value = vm.interpret(main_function)
 
@@ -55,7 +53,8 @@ def main():
         ("Local Variables and Scopes", 'var a = "global a"; var b = "global b"; { var a = "inner a"; b = a; } return a + b;', "global ainner a"),
         ("If-Else Statement", "var x = 10; if (x > 5) { x = 20; } else { x = 0; } return x;", 20.0),
         ("While Loop", "var i = 0; var total = 0; while (i < 5) { total = total + i; i = i + 1; } return total;", 10.0),
-        ("Functions (Fibonacci)", "function fib(n) { if (n < 2) { return n; } return fib(n - 2) + fib(n - 1); } return fib(8);", 21.0)
+        ("Functions (Fibonacci)", "function fib(n) { if (n < 2) { return n; } return fib(n - 2) + fib(n - 1); } return fib(8);", 21.0),
+        ("Module System", "use math; return math.add(10, 5) + math.PI;", 15.0 + 3.14159)
     ]
 
     tests_passed = 0
@@ -64,6 +63,26 @@ def main():
             tests_passed += 1
 
     total_tests = len(tests)
+
+    # Special test for print() that checks stdout
+    print(f"--- Running VM Test: Native Print ---")
+    total_tests += 1
+    source_print = 'print("hello", 123);'
+    f = io.StringIO()
+    with redirect_stdout(f):
+        lexer = Lexer(source_print)
+        tokens = lexer.scan_tokens()
+        parser = Parser(tokens)
+        statements = parser.parse()
+        main_function = compile_source(statements)
+        vm = VM()
+        vm.interpret(main_function)
+    output = f.getvalue()
+    if "hello 123\n" in output:
+        print("PASS: Native Print")
+        tests_passed += 1
+    else:
+        print(f"FAIL: Native Print")
     print(f"\n--- VM Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

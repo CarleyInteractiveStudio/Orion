@@ -46,7 +46,17 @@ class OpCode(IntEnum):
 
     # --- Functions ---
     OP_CALL = 22
-    OP_RETURN = 23      # Returns from the current function (and ends the script).
+    OP_RETURN = 23
+
+    # --- Modules ---
+    OP_USE = 24
+
+    # --- Properties ---
+    OP_GET_PROPERTY = 25
+    OP_SET_PROPERTY = 26
+
+    # --- End of Execution ---
+    # OP_RETURN now serves this purpose
 
 
 class Chunk:
