@@ -81,6 +81,59 @@ def main():
     if run_interpreter_test("Comparisons and Booleans", source3, expected3):
         tests_passed += 1
 
+    # Test 4: Block scope
+    source4 = """
+    var a = "outer";
+    {
+        var a = "inner";
+    }
+    """
+    expected4 = {"a": "outer"}
+    total_tests += 1
+    if run_interpreter_test("Block Scopes", source4, expected4):
+        tests_passed += 1
+
+    # Test 5: If-else statement
+    source5 = """
+    var x = 10;
+    if (x > 5) {
+        x = 20;
+    } else {
+        x = 0;
+    }
+    """
+    expected5 = {"x": 20.0}
+    total_tests += 1
+    if run_interpreter_test("If-Else Logic", source5, expected5):
+        tests_passed += 1
+
+    # Test 6: While loop
+    source6 = """
+    var i = 0;
+    var total = 0;
+    while (i < 5) {
+        total = total + i;
+        i = i + 1;
+    }
+    """
+    # 0 + 1 + 2 + 3 + 4 = 10
+    expected6 = {"total": 10.0, "i": 5.0}
+    total_tests += 1
+    if run_interpreter_test("While Loop", source6, expected6):
+        tests_passed += 1
+
+    # Test 7: Logical operators
+    source7 = """
+    var a = "a";
+    var b = "b";
+    var res_or = a or b;  // should be "a"
+    var res_and = false and a; // should be false
+    """
+    expected7 = {"res_or": "a", "res_and": False}
+    total_tests += 1
+    if run_interpreter_test("Logical Operators Short-circuiting", source7, expected7):
+        tests_passed += 1
+
     print(f"\n--- Interpreter Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

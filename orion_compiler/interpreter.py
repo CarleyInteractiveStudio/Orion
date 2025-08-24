@@ -43,6 +43,31 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
         self.environment.define(stmt.name.lexeme, value)
         return None
 
+    def visit_block_stmt(self, stmt: ast.Block):
+        self._execute_block(stmt.statements, Environment(self.environment))
+        return None
+
+    def visit_if_stmt(self, stmt: ast.If):
+        if self._is_truthy(self._evaluate(stmt.condition)):
+            self._execute(stmt.then_branch)
+        elif stmt.else_branch is not None:
+            self._execute(stmt.else_branch)
+        return None
+
+    def visit_while_stmt(self, stmt: ast.While):
+        while self._is_truthy(self._evaluate(stmt.condition)):
+            self._execute(stmt.body)
+        return None
+
+    def _execute_block(self, statements: List[ast.Stmt], environment: Environment):
+        previous = self.environment
+        try:
+            self.environment = environment
+            for statement in statements:
+                self._execute(statement)
+        finally:
+            self.environment = previous
+
     # --- HELPER METHODS FOR RUNTIME CHECKS ---
 
     def _is_truthy(self, obj: Any) -> bool:
@@ -127,3 +152,20 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_variable_expr(self, expr: ast.Variable):
         return self.environment.get(expr.name)
+
+    def visit_assign_expr(self, expr: ast.Assign):
+        value = self._evaluate(expr.value)
+        self.environment.assign(expr.name, value)
+        return value
+
+    def visit_logical_expr(self, expr: ast.Logical):
+        left = self._evaluate(expr.left)
+
+        if expr.operator.token_type == TokenType.OR:
+            if self._is_truthy(left):
+                return left
+        else: # AND
+            if not self._is_truthy(left):
+                return left
+
+        return self._evaluate(expr.right)

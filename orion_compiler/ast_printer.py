@@ -22,6 +22,37 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
             return self._parenthesize(f"var {stmt.name.lexeme}", stmt.initializer)
         return f"(var {stmt.name.lexeme})"
 
+    def visit_block_stmt(self, stmt: ast.Block) -> str:
+        lines = ["(block"]
+        for statement in stmt.statements:
+            # This is a simple representation. A real pretty printer would handle indentation better.
+            lines.append(f"  {statement.accept(self)}")
+        lines.append(")")
+        return "\n".join(lines)
+
+    def visit_if_stmt(self, stmt: ast.If) -> str:
+        parts = [
+            "(if ",
+            stmt.condition.accept(self),
+            " ",
+            stmt.then_branch.accept(self)
+        ]
+        if stmt.else_branch:
+            parts.append(" else ")
+            parts.append(stmt.else_branch.accept(self))
+        parts.append(")")
+        return "".join(parts)
+
+    def visit_while_stmt(self, stmt: ast.While) -> str:
+        parts = [
+            "(while ",
+            stmt.condition.accept(self),
+            " ",
+            stmt.body.accept(self),
+            ")"
+        ]
+        return "".join(parts)
+
     # --- Expression Visitor Methods ---
 
     def visit_binary_expr(self, expr: ast.Binary) -> str:
@@ -41,6 +72,12 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_variable_expr(self, expr: ast.Variable) -> str:
         return expr.name.lexeme
+
+    def visit_assign_expr(self, expr: ast.Assign) -> str:
+        return self._parenthesize(f"assign {expr.name.lexeme}", expr.value)
+
+    def visit_logical_expr(self, expr: ast.Logical) -> str:
+        return self._parenthesize(expr.operator.lexeme, expr.left, expr.right)
 
     # --- Helper Method ---
 

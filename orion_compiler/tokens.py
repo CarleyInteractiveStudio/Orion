@@ -33,6 +33,7 @@ class TokenType(Enum):
     NUMBER = auto()
 
     # Keywords
+    AND = auto()
     AS = auto()
     BOOL = auto()
     COMPONENT = auto()
@@ -48,6 +49,7 @@ class TokenType(Enum):
     LET = auto()
     LICENSE = auto()
     MODULE = auto()
+    OR = auto()
     PERMISSIONS = auto()
     PRIVATE = auto()
     PUBLIC = auto()
@@ -80,6 +82,7 @@ class Token:
 
 # Mapping keywords to their token types
 keywords = {
+    "and": TokenType.AND,
     "as": TokenType.AS,
     "bool": TokenType.BOOL,
     "component": TokenType.COMPONENT,
@@ -95,6 +98,7 @@ keywords = {
     "let": TokenType.LET,
     "license": TokenType.LICENSE,
     "module": TokenType.MODULE,
+    "or": TokenType.OR,
     "permissions": TokenType.PERMISSIONS,
     "private": TokenType.PRIVATE,
     "public": TokenType.PUBLIC,

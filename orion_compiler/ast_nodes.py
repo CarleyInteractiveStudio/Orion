@@ -28,6 +28,14 @@ class ExprVisitor(ABC):
     def visit_variable_expr(self, expr: 'Variable'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_assign_expr(self, expr: 'Assign'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_logical_expr(self, expr: 'Logical'):
+        raise NotImplementedError
+
 
 class StmtVisitor(ABC):
     @abstractmethod
@@ -36,6 +44,18 @@ class StmtVisitor(ABC):
 
     @abstractmethod
     def visit_var_stmt(self, stmt: 'Var'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_block_stmt(self, stmt: 'Block'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_if_stmt(self, stmt: 'If'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_while_stmt(self, stmt: 'While'):
         raise NotImplementedError
 
 
@@ -98,6 +118,25 @@ class Variable(Expr):
         return visitor.visit_variable_expr(self)
 
 
+@dataclass
+class Assign(Expr):
+    name: Token
+    value: Expr
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_assign_expr(self)
+
+
+@dataclass
+class Logical(Expr):
+    left: Expr
+    operator: Token
+    right: Expr
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_logical_expr(self)
+
+
 # --- Concrete Statement Nodes ---
 
 @dataclass
@@ -115,3 +154,30 @@ class Var(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_var_stmt(self)
+
+
+@dataclass
+class Block(Stmt):
+    statements: List[Stmt]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_block_stmt(self)
+
+
+@dataclass
+class If(Stmt):
+    condition: Expr
+    then_branch: Stmt
+    else_branch: Optional[Stmt]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_if_stmt(self)
+
+
+@dataclass
+class While(Stmt):
+    condition: Expr
+    body: Stmt
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_while_stmt(self)

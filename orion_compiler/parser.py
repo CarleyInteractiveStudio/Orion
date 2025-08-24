@@ -53,8 +53,47 @@ class Parser:
         return ast.Var(name, initializer)
 
     def _statement(self) -> ast.Stmt:
-        """Parses a statement. For now, only expression statements are supported."""
+        """Parses a statement. This includes if, while, expression, and block statements."""
+        if self._match(TokenType.IF):
+            return self._if_statement()
+        if self._match(TokenType.WHILE):
+            return self._while_statement()
+        if self._match(TokenType.LEFT_BRACE):
+            return ast.Block(self._block())
         return self._expression_statement()
+
+    def _if_statement(self) -> ast.Stmt:
+        """Parses an if-else statement."""
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.")
+        condition = self._expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after if condition.")
+
+        then_branch = self._statement()
+        else_branch = None
+        if self._match(TokenType.ELSE):
+            else_branch = self._statement()
+
+        return ast.If(condition, then_branch, else_branch)
+
+    def _while_statement(self) -> ast.Stmt:
+        """Parses a while loop."""
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'.")
+        condition = self._expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after while condition.")
+        body = self._statement()
+
+        return ast.While(condition, body)
+
+    def _block(self) -> List[ast.Stmt]:
+        """Parses a block of statements."""
+        statements: List[ast.Stmt] = []
+        while not self._check(TokenType.RIGHT_BRACE) and not self._is_at_end():
+            declaration = self._declaration()
+            if declaration is not None:
+                statements.append(declaration)
+
+        self._consume(TokenType.RIGHT_BRACE, "Expect '}' after block.")
+        return statements
 
     def _expression_statement(self) -> ast.Stmt:
         """Parses an expression statement: expression ';'"""
@@ -64,7 +103,42 @@ class Parser:
 
     def _expression(self) -> ast.Expr:
         """Parses an expression. Entry point for all expression rules."""
-        return self._equality()
+        return self._assignment()
+
+    def _assignment(self) -> ast.Expr:
+        """Parses an assignment expression."""
+        expr = self._or()
+
+        if self._match(TokenType.EQUAL):
+            equals = self._previous()
+            value = self._assignment() # Right-associative
+
+            if isinstance(expr, ast.Variable):
+                name = expr.name
+                return ast.Assign(name, value)
+
+            # If the left-hand side isn't a valid assignment target, report an error.
+            self._error(equals, "Invalid assignment target.")
+
+        return expr
+
+    def _or(self) -> ast.Expr:
+        """Parses logical OR expressions."""
+        expr = self._and()
+        while self._match(TokenType.OR):
+            operator = self._previous()
+            right = self._and()
+            expr = ast.Logical(expr, operator, right)
+        return expr
+
+    def _and(self) -> ast.Expr:
+        """Parses logical AND expressions."""
+        expr = self._equality()
+        while self._match(TokenType.AND):
+            operator = self._previous()
+            right = self._equality()
+            expr = ast.Logical(expr, operator, right)
+        return expr
 
     def _equality(self) -> ast.Expr:
         """Parses an equality expression (==)."""
