@@ -55,6 +55,11 @@ class OpCode(IntEnum):
     OP_GET_PROPERTY = 25
     OP_SET_PROPERTY = 26
 
+    # --- Data Structures ---
+    OP_BUILD_LIST = 27
+    OP_GET_SUBSCRIPT = 28
+    OP_SET_SUBSCRIPT = 29
+
     # --- End of Execution ---
     # OP_RETURN now serves this purpose
 

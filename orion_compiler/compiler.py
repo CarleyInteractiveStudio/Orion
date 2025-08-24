@@ -86,6 +86,14 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         right_type = self._analyze_expr(expr.right)
         op = expr.operator.token_type.name
 
+        # If either operand is ANY, we can't check, so we assume it's valid at compile time.
+        if left_type == OrionType.ANY or right_type == OrionType.ANY:
+            return OrionType.ANY
+
+        # If either operand is ANY, we can't check, so we assume it's valid at compile time.
+        if left_type == OrionType.ANY or right_type == OrionType.ANY:
+            return OrionType.ANY
+
         if op in ('MINUS', 'STAR', 'SLASH', 'GREATER', 'LESS'):
             if left_type != OrionType.NUMBER or right_type != OrionType.NUMBER:
                 type_error(expr.operator, f"Operands for {op} must be numbers.")
@@ -93,8 +101,11 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             return OrionType.NUMBER if op != 'GREATER' and op != 'LESS' else OrionType.BOOL
 
         if op == 'PLUS':
-            if left_type == OrionType.NUMBER and right_type == OrionType.NUMBER: return OrionType.NUMBER
-            if left_type == OrionType.STRING and right_type == OrionType.STRING: return OrionType.STRING
+            if (left_type == OrionType.NUMBER and right_type == OrionType.NUMBER):
+                return OrionType.NUMBER
+            if (left_type == OrionType.STRING and right_type == OrionType.STRING):
+                return OrionType.STRING
+
             type_error(expr.operator, "Operands for '+' must be two numbers or two strings.")
             self.had_error = True
             return OrionType.ANY
@@ -199,7 +210,9 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
 
     # Unimplemented placeholders
     def visit_function_stmt(self, stmt: ast.Function): pass # TODO
-    def visit_return_stmt(self, stmt: ast.Return): pass # TODO
+    def visit_return_stmt(self, stmt: ast.Return):
+        if stmt.value:
+            self._analyze_expr(stmt.value)
     def visit_call_expr(self, expr: ast.Call) -> OrionType: return OrionType.ANY # TODO
     def visit_logical_expr(self, expr: ast.Logical) -> OrionType: return OrionType.BOOL # Simple for now
     def visit_get_expr(self, expr: ast.Get) -> OrionType: return OrionType.ANY # TODO
@@ -210,6 +223,45 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
     def visit_use_stmt(self, stmt: ast.UseStmt): pass
+    def visit_list_literal_expr(self, expr: ast.ListLiteral) -> OrionType:
+        # A more advanced checker would infer the element type, e.g. list[number]
+        # For now, all list literals are of type LIST.
+        for element in expr.elements:
+            self._analyze_expr(element) # Analyze for side effects or errors
+        return OrionType.LIST
+
+    def visit_get_subscript_expr(self, expr: ast.GetSubscript) -> OrionType:
+        object_type = self._analyze_expr(expr.object)
+        index_type = self._analyze_expr(expr.index)
+
+        if object_type != OrionType.LIST and object_type != OrionType.ANY:
+            type_error(expr.bracket, f"Can only use subscript on lists, not on type {object_type.name}.")
+            self.had_error = True
+
+        if index_type != OrionType.NUMBER and index_type != OrionType.ANY:
+            type_error(expr.bracket, f"List index must be a number, not type {index_type.name}.")
+            self.had_error = True
+
+        # We don't know the element type, so we return ANY.
+        return OrionType.ANY
+
+    def visit_set_subscript_expr(self, expr: ast.SetSubscript) -> OrionType:
+        object_type = self._analyze_expr(expr.object)
+        index_type = self._analyze_expr(expr.index)
+        value_type = self._analyze_expr(expr.value)
+
+        if object_type != OrionType.LIST and object_type != OrionType.ANY:
+            type_error(expr.bracket, f"Can only use subscript on lists, not on type {object_type.name}.")
+            self.had_error = True
+
+        if index_type != OrionType.NUMBER and index_type != OrionType.ANY:
+            type_error(expr.bracket, f"List index must be a number, not type {index_type.name}.")
+            self.had_error = True
+
+        # A more advanced system would check if value_type matches the list's element type.
+
+        return value_type
+
 
 # --- Bytecode Compiler ---
 class Compiler(ast.ExprVisitor, ast.StmtVisitor):
@@ -428,3 +480,19 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
 
         # For now, modules can only be imported at the global scope.
         self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(bind_name))
+
+    def visit_list_literal_expr(self, expr: ast.ListLiteral):
+        for element in expr.elements:
+            self._compile_expr(element)
+        self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements))
+
+    def visit_get_subscript_expr(self, expr: ast.GetSubscript):
+        self._compile_expr(expr.object)
+        self._compile_expr(expr.index)
+        self._emit_byte(OpCode.OP_GET_SUBSCRIPT)
+
+    def visit_set_subscript_expr(self, expr: ast.SetSubscript):
+        self._compile_expr(expr.object)
+        self._compile_expr(expr.index)
+        self._compile_expr(expr.value)
+        self._emit_byte(OpCode.OP_SET_SUBSCRIPT)

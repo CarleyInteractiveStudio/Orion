@@ -9,3 +9,4 @@ class OrionType(Enum):
     FUNCTION = auto()
     COMPONENT = auto()
     MODULE = auto()
+    LIST = auto()

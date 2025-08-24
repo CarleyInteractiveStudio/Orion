@@ -254,6 +254,8 @@ class Parser:
                 return ast.Assign(name, value)
             elif isinstance(expr, ast.Get):
                 return ast.Set(expr.object, expr.name, value)
+            elif isinstance(expr, ast.GetSubscript):
+                return ast.SetSubscript(expr.object, expr.index, value, expr.bracket)
 
             # If the left-hand side isn't a valid assignment target, report an error.
             self._error(equals, "Invalid assignment target.")
@@ -337,7 +339,7 @@ class Parser:
         return ast.Call(callee, paren, arguments)
 
     def _call(self) -> ast.Expr:
-        """Parses a function call or property access expression."""
+        """Parses a function call, property access, or subscript expression."""
         expr = self._primary()
 
         while True:
@@ -346,13 +348,17 @@ class Parser:
             elif self._match(TokenType.DOT):
                 name = self._consume(TokenType.IDENTIFIER, "Expect property name after '.'.")
                 expr = ast.Get(expr, name)
+            elif self._match(TokenType.LEFT_BRACKET):
+                index = self._expression()
+                bracket = self._consume(TokenType.RIGHT_BRACKET, "Expect ']' after index.")
+                expr = ast.GetSubscript(expr, index, bracket)
             else:
                 break
 
         return expr
 
     def _primary(self) -> ast.Expr:
-        """Parses primary expressions (literals, grouping, identifiers)."""
+        """Parses primary expressions (literals, grouping, identifiers, lists)."""
         if self._match(TokenType.FALSE): return ast.Literal(False)
         if self._match(TokenType.TRUE): return ast.Literal(True)
         if self._match(TokenType.THIS): return ast.This(self._previous())
@@ -370,6 +376,16 @@ class Parser:
             expr = self._expression()
             self._consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.")
             return ast.Grouping(expr)
+
+        if self._match(TokenType.LEFT_BRACKET):
+            elements = []
+            if not self._check(TokenType.RIGHT_BRACKET):
+                while True:
+                    elements.append(self._expression())
+                    if not self._match(TokenType.COMMA):
+                        break
+            self._consume(TokenType.RIGHT_BRACKET, "Expect ']' after list elements.")
+            return ast.ListLiteral(elements)
 
         raise self._error(self._peek(), "Expect expression.")
 

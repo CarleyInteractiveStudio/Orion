@@ -49,7 +49,19 @@ class ExprVisitor(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def visit_this_expr(self, expr: 'This'):
+    def visit_list_literal_expr(self, expr: 'ListLiteral'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_list_literal_expr(self, expr: 'ListLiteral'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_get_subscript_expr(self, expr: 'GetSubscript'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_set_subscript_expr(self, expr: 'SetSubscript'):
         raise NotImplementedError
 
 
@@ -216,6 +228,35 @@ class This(Expr):
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_this_expr(self)
+
+
+@dataclass
+class ListLiteral(Expr):
+    elements: List[Expr]
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_list_literal_expr(self)
+
+
+@dataclass
+class GetSubscript(Expr):
+    object: Expr
+    index: Expr
+    bracket: Token # For error reporting
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_get_subscript_expr(self)
+
+
+@dataclass
+class SetSubscript(Expr):
+    object: Expr
+    index: Expr
+    value: Expr
+    bracket: Token # For error reporting
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_set_subscript_expr(self)
 
 
 # --- Concrete Statement Nodes ---

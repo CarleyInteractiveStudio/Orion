@@ -2,9 +2,19 @@ from bytecode import Chunk
 from typing import Callable, Any
 from tokens import Token
 
+from typing import List
+
 class OrionObject:
     """Base class for all runtime objects in Orion."""
     pass
+
+class OrionList(OrionObject):
+    """Represents a list in Orion."""
+    def __init__(self, elements: List[Any]):
+        self.elements = elements
+
+    def __str__(self) -> str:
+        return f"[{', '.join(map(str, self.elements))}]"
 
 class OrionNativeFunction(OrionObject):
     """A wrapper for native Python functions exposed to Orion."""

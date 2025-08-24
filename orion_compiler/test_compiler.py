@@ -76,6 +76,8 @@ def main():
         ("Unary not error", "!123;", "Operand for '!' must be a boolean"),
         ("If condition error", "if (1) {}", "If condition must be a boolean"),
         ("While condition error", "while ('a') {}", "While condition must be a boolean"),
+        ("Subscript non-list", "var x: number = 1; return x[0];", "Can only use subscript on lists"),
+        ("Subscript with non-number", "var l = [1]; return l['a'];", "List index must be a number"),
     ]
 
     valid_tests = [
@@ -84,6 +86,9 @@ def main():
         ("Boolean logic", "var b: bool = true == false;"),
         ("Valid if", "if (true) {}"),
         ("Valid while", "var b: bool = false; while(b) {}"),
+        ("List creation", "var l = [1, 'a', true];"),
+        ("Valid get subscript", "var l = [1]; var x = l[0];"),
+        ("Valid set subscript", "var l = [1]; l[0] = 2;"),
     ]
 
     tests_passed = 0

@@ -120,6 +120,8 @@ class Lexer:
         elif char == ')': self._add_token(TokenType.RIGHT_PAREN)
         elif char == '{': self._add_token(TokenType.LEFT_BRACE)
         elif char == '}': self._add_token(TokenType.RIGHT_BRACE)
+        elif char == '[': self._add_token(TokenType.LEFT_BRACKET)
+        elif char == ']': self._add_token(TokenType.RIGHT_BRACKET)
         elif char == ',': self._add_token(TokenType.COMMA)
         elif char == '.': self._add_token(TokenType.DOT)
         elif char == '-': self._add_token(TokenType.MINUS)

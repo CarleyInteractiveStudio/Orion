@@ -1,5 +1,5 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction, OrionNativeFunction, OrionInstance
+from objects import OrionCompiledFunction, OrionNativeFunction, OrionInstance, OrionList
 from tokens import Token
 from dataclasses import dataclass
 from typing import Any
@@ -199,6 +199,54 @@ class VM:
                 self.pop()
                 self.pop()
                 self.push(value)
+
+            elif instruction == OpCode.OP_BUILD_LIST:
+                item_count = read_byte()
+                elements = self.stack[-item_count:]
+                self.stack = self.stack[:-item_count]
+
+                list_obj = OrionList(elements)
+                self.push(list_obj)
+
+            elif instruction == OpCode.OP_GET_SUBSCRIPT:
+                index = self.pop()
+                list_obj = self.pop()
+
+                if not isinstance(list_obj, OrionList):
+                    print("RuntimeError: Can only subscript lists.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                # Basic integer check, could be more robust
+                if not isinstance(index, int):
+                    print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                try:
+                    self.push(list_obj.elements[index])
+                except IndexError:
+                    print(f"RuntimeError: List index {index} out of range.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+            elif instruction == OpCode.OP_SET_SUBSCRIPT:
+                value = self.pop()
+                index = self.pop()
+                list_obj = self.pop()
+
+                if not isinstance(list_obj, OrionList):
+                    print("RuntimeError: Can only subscript lists.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                if not isinstance(index, int):
+                    print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                try:
+                    list_obj.elements[index] = value
+                    self.push(value) # Assignment is an expression
+                except IndexError:
+                    print(f"RuntimeError: List index {index} out of range.")
+                    # Don't push anything, the expression failed.
+                    return InterpretResult.RUNTIME_ERROR, None
 
 
     def _is_falsey(self, value) -> bool:
