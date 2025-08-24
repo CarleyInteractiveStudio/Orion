@@ -3,11 +3,20 @@ import ast_nodes as ast
 from bytecode import Chunk, OpCode
 from tokens import Token
 from objects import OrionCompiledFunction
+from orion_types import OrionType
+from errors import type_error
 
 def compile(statements: list[ast.Stmt]) -> OrionCompiledFunction | None:
     """Top-level compile function."""
-    # The top level is treated like a function with no name or params.
     script_fn_node = ast.Function(Token(None, "<script>", None, 0), [], statements, None)
+
+    # 1. Run Type Analysis first
+    analyzer = TypeAnalyzer()
+    analyzer.analyze(statements)
+    if analyzer.had_error:
+        return None
+
+    # 2. If types are valid, compile to bytecode
     compiler = Compiler(None, script_fn_node, "script")
     main_function = compiler._end_compiler()
     return None if compiler.had_error else main_function
@@ -16,7 +25,193 @@ def compile(statements: list[ast.Stmt]) -> OrionCompiledFunction | None:
 class Local:
     name: Token
     depth: int
+    type: OrionType
 
+# --- Static Type Analyzer ---
+
+class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
+    def __init__(self):
+        self.locals: list[Local] = []
+        self.globals: dict[str, OrionType] = {}
+        self.scope_depth: int = 0
+        self.had_error = False
+        self.type_map = {
+            "any": OrionType.ANY, "nil": OrionType.NIL, "bool": OrionType.BOOL,
+            "number": OrionType.NUMBER, "string": OrionType.STRING, "function": OrionType.FUNCTION,
+            "component": OrionType.COMPONENT, "module": OrionType.MODULE,
+        }
+
+    def analyze(self, statements: list[ast.Stmt]):
+        for stmt in statements:
+            self._analyze_stmt(stmt)
+
+    def _analyze_stmt(self, stmt: ast.Stmt):
+        stmt.accept(self)
+
+    def _analyze_expr(self, expr: ast.Expr) -> OrionType:
+        return expr.accept(self)
+
+    def visit_var_stmt(self, stmt: ast.Var):
+        declared_type = self._resolve_type_expr(stmt.type_annotation)
+
+        init_type = OrionType.ANY
+        if stmt.initializer:
+            init_type = self._analyze_expr(stmt.initializer)
+
+        # If no type is declared, infer from initializer.
+        if declared_type == OrionType.ANY:
+            declared_type = init_type
+
+        if declared_type != OrionType.ANY and init_type != OrionType.ANY and declared_type != init_type:
+            type_error(stmt.name, f"Initializer of type {init_type.name} cannot be assigned to variable of type {declared_type.name}.")
+            self.had_error = True
+
+        if self.scope_depth > 0:
+            self._add_local(stmt.name, declared_type)
+        else:
+            self.globals[stmt.name.lexeme] = declared_type
+
+    def visit_assign_expr(self, expr: ast.Assign) -> OrionType:
+        value_type = self._analyze_expr(expr.value)
+        var_type = self._get_var_type(expr.name)
+
+        if var_type != OrionType.ANY and var_type != value_type:
+            type_error(expr.name, f"Cannot assign value of type {value_type.name} to variable of type {var_type.name}.")
+            self.had_error = True
+
+        return value_type
+
+    def visit_binary_expr(self, expr: ast.Binary) -> OrionType:
+        left_type = self._analyze_expr(expr.left)
+        right_type = self._analyze_expr(expr.right)
+        op = expr.operator.token_type.name
+
+        if op in ('MINUS', 'STAR', 'SLASH', 'GREATER', 'LESS'):
+            if left_type != OrionType.NUMBER or right_type != OrionType.NUMBER:
+                type_error(expr.operator, f"Operands for {op} must be numbers.")
+                self.had_error = True
+            return OrionType.NUMBER if op != 'GREATER' and op != 'LESS' else OrionType.BOOL
+
+        if op == 'PLUS':
+            if left_type == OrionType.NUMBER and right_type == OrionType.NUMBER: return OrionType.NUMBER
+            if left_type == OrionType.STRING and right_type == OrionType.STRING: return OrionType.STRING
+            type_error(expr.operator, "Operands for '+' must be two numbers or two strings.")
+            self.had_error = True
+            return OrionType.ANY
+
+        if op == 'EQUAL_EQUAL':
+            # For now, we only allow comparison of the same type.
+            if left_type != right_type:
+                type_error(expr.operator, f"Cannot compare values of type {left_type.name} and {right_type.name}.")
+                self.had_error = True
+            return OrionType.BOOL
+
+        return OrionType.ANY
+
+    def visit_unary_expr(self, expr: ast.Unary) -> OrionType:
+        right_type = self._analyze_expr(expr.right)
+        op = expr.operator.token_type.name
+
+        if op == 'MINUS':
+            if right_type != OrionType.NUMBER:
+                type_error(expr.operator, "Operand for '-' must be a number.")
+                self.had_error = True
+            return OrionType.NUMBER
+
+        if op == 'BANG':
+            if right_type != OrionType.BOOL:
+                type_error(expr.operator, "Operand for '!' must be a boolean.")
+                self.had_error = True
+            return OrionType.BOOL
+
+        return OrionType.ANY
+
+    def visit_if_stmt(self, stmt: ast.If):
+        condition_type = self._analyze_expr(stmt.condition)
+        if condition_type != OrionType.BOOL:
+            token = self._get_token_from_expr(stmt.condition)
+            type_error(token, f"If condition must be a boolean, but got {condition_type.name}.")
+            self.had_error = True
+        self._analyze_stmt(stmt.then_branch)
+        if stmt.else_branch:
+            self._analyze_stmt(stmt.else_branch)
+
+    def visit_while_stmt(self, stmt: ast.While):
+        condition_type = self._analyze_expr(stmt.condition)
+        if condition_type != OrionType.BOOL:
+            token = self._get_token_from_expr(stmt.condition)
+            type_error(token, f"While condition must be a boolean, but got {condition_type.name}.")
+            self.had_error = True
+        self._analyze_stmt(stmt.body)
+
+    def visit_block_stmt(self, stmt: ast.Block):
+        self._begin_scope()
+        self.analyze(stmt.statements)
+        self._end_scope()
+
+    def visit_expression_stmt(self, stmt: ast.Expression): self._analyze_expr(stmt.expression)
+    def visit_literal_expr(self, expr: ast.Literal) -> OrionType:
+        if isinstance(expr.value, bool): return OrionType.BOOL
+        if isinstance(expr.value, (int, float)): return OrionType.NUMBER
+        if isinstance(expr.value, str): return OrionType.STRING
+        if expr.value is None: return OrionType.NIL
+        return OrionType.ANY
+
+    def visit_grouping_expr(self, expr: ast.Grouping) -> OrionType: return self._analyze_expr(expr.expression)
+    def visit_variable_expr(self, expr: ast.Variable) -> OrionType: return self._get_var_type(expr.name)
+
+    def _get_token_from_expr(self, expr: ast.Expr) -> Token:
+        """A simple helper to get a representative token from an expression for error reporting."""
+        if isinstance(expr, ast.Binary) or isinstance(expr, ast.Unary):
+            return expr.operator
+        if isinstance(expr, ast.Variable):
+            return expr.name
+        if isinstance(expr, ast.Literal):
+            # Literals don't store a token in the AST right now, so we create a placeholder.
+            # This is a limitation to be fixed later.
+            return Token(None, str(expr.value), None, 0) # Line number is lost.
+        # Fallback
+        return Token(None, "expression", None, 0)
+
+    # Scope and Type Resolution Helpers
+    def _begin_scope(self): self.scope_depth += 1
+    def _end_scope(self):
+        self.scope_depth -= 1
+        while self.locals and self.locals[-1].depth > self.scope_depth:
+            self.locals.pop()
+    def _add_local(self, name: Token, type: OrionType): self.locals.append(Local(name, self.scope_depth, type))
+    def _resolve_type_expr(self, type_expr: ast.Expr | None) -> OrionType:
+        if type_expr is None: return OrionType.ANY
+        if isinstance(type_expr, ast.Variable):
+            type_name = type_expr.name.lexeme
+            return self.type_map.get(type_name, OrionType.ANY)
+        return OrionType.ANY
+    def _get_var_type(self, name: Token) -> OrionType:
+        for local in reversed(self.locals):
+            if name.lexeme == local.name.lexeme:
+                return local.type
+
+        if name.lexeme in self.globals:
+            return self.globals[name.lexeme]
+
+        # Undeclared variable
+        return OrionType.ANY
+
+    # Unimplemented placeholders
+    def visit_function_stmt(self, stmt: ast.Function): pass # TODO
+    def visit_return_stmt(self, stmt: ast.Return): pass # TODO
+    def visit_call_expr(self, expr: ast.Call) -> OrionType: return OrionType.ANY # TODO
+    def visit_logical_expr(self, expr: ast.Logical) -> OrionType: return OrionType.BOOL # Simple for now
+    def visit_get_expr(self, expr: ast.Get) -> OrionType: return OrionType.ANY # TODO
+    def visit_set_expr(self, expr: ast.Set) -> OrionType: return OrionType.ANY # TODO
+    def visit_this_expr(self, expr: ast.This) -> OrionType: return OrionType.ANY # TODO
+    def visit_component_stmt(self, stmt: ast.ComponentStmt): pass
+    def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
+    def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
+    def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
+    def visit_use_stmt(self, stmt: ast.UseStmt): pass
+
+# --- Bytecode Compiler ---
 class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     """
     The Compiler walks the AST from the parser and emits bytecode.
@@ -33,10 +228,11 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self.function = OrionCompiledFunction(len(function_stmt.params), Chunk(), func_name)
 
         # The first stack slot is for the function itself.
-        self._add_local(Token(None, "", None, 0))
+        # The type here doesn't matter as much since it's not for static analysis.
+        self._add_local(Token(None, "", None, 0), OrionType.FUNCTION)
 
         for param in function_stmt.params:
-            self._add_local(param.name)
+            self._add_local(param.name, OrionType.ANY) # Type already checked by TypeAnalyzer
 
         # Compile the body
         self._compile_program(function_stmt.body)
@@ -121,7 +317,8 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_var_stmt(self, stmt: ast.Var):
         self._compile_expr(stmt.initializer if stmt.initializer else ast.Literal(None))
         if self.scope_depth > 0:
-            self._add_local(stmt.name)
+            # Type doesn't matter here, just need to record the local variable.
+            self._add_local(stmt.name, OrionType.ANY)
             return
         self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
 
@@ -158,8 +355,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         function_obj = compiler._end_compiler()
         constant_idx = self._make_constant(function_obj)
         self._emit_bytes(OpCode.OP_CONSTANT, constant_idx)
+
         if self.scope_depth > 0:
-            self._add_local(stmt.name)
+            self._add_local(stmt.name, OrionType.FUNCTION)
         else:
             self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
 
@@ -183,7 +381,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         while self.locals and self.locals[-1].depth > self.scope_depth:
             self._emit_byte(OpCode.OP_POP)
             self.locals.pop()
-    def _add_local(self, name: Token): self.locals.append(Local(name, self.scope_depth))
+    def _add_local(self, name: Token, type: OrionType): self.locals.append(Local(name, self.scope_depth, type))
     def _resolve_local(self, name: Token) -> int:
         for i in range(len(self.locals) - 1, -1, -1):
             if name.lexeme == self.locals[i].name.lexeme:

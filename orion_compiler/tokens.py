@@ -19,6 +19,8 @@ class TokenType(Enum):
     HASH = auto()           # #
 
     # One or two character tokens
+    BANG = auto()           # !
+    BANG_EQUAL = auto()     # !=
     EQUAL = auto()          # =
     EQUAL_EQUAL = auto()    # ==
     GREATER = auto()        # >

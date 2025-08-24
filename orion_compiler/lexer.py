@@ -54,18 +54,18 @@ class Lexer:
             return '\0'
         return self.source[self.current + 1]
 
-    def _string(self):
-        while self._peek() != '"' and not self._is_at_end():
+    def _string(self, quote_char: str):
+        while self._peek() != quote_char and not self._is_at_end():
             if self._peek() == '\n':
                 self.line += 1
             self._advance()
 
         if self._is_at_end():
-            # Handle unterminated string error, maybe later with a proper error reporter
+            # Handle unterminated string error
             print(f"[Line {self.line}] Error: Unterminated string.")
             return
 
-        self._advance()  # The closing ".
+        self._advance()  # The closing quote.
 
         # Trim the surrounding quotes.
         value = self.source[self.start + 1:self.current - 1]
@@ -130,6 +130,7 @@ class Lexer:
         elif char == '#': self._add_token(TokenType.HASH)
 
         # One or two character tokens
+        elif char == '!': self._add_token(TokenType.BANG_EQUAL if self._match('=') else TokenType.BANG)
         elif char == '=':
             if self._match('='): self._add_token(TokenType.EQUAL_EQUAL)
             elif self._match('>'): self._add_token(TokenType.ARROW)
@@ -155,7 +156,8 @@ class Lexer:
             self.line += 1
 
         # Literals
-        elif char == '"': self._string()
+        elif char == '"': self._string('"')
+        elif char == "'": self._string("'")
         elif self._is_digit(char): self._number()
         elif self._is_alpha(char): self._identifier()
 

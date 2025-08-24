@@ -315,8 +315,8 @@ class Parser:
         return expr
 
     def _unary(self) -> ast.Expr:
-        """Parses unary expressions (e.g., -x)."""
-        if self._match(TokenType.MINUS):
+        """Parses unary expressions (e.g., -x, !y)."""
+        if self._match(TokenType.MINUS, TokenType.BANG):
             operator = self._previous()
             right = self._unary()
             return ast.Unary(operator, right)
