@@ -59,6 +59,7 @@ class OpCode(IntEnum):
     OP_BUILD_LIST = 27
     OP_GET_SUBSCRIPT = 28
     OP_SET_SUBSCRIPT = 29
+    OP_BUILD_DICT = 30
 
     # --- End of Execution ---
     # OP_RETURN now serves this purpose

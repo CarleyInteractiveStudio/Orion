@@ -10,3 +10,4 @@ class OrionType(Enum):
     COMPONENT = auto()
     MODULE = auto()
     LIST = auto()
+    DICT = auto()

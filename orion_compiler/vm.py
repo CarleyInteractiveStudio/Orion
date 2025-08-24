@@ -1,5 +1,5 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction, OrionNativeFunction, OrionInstance, OrionList
+from objects import OrionCompiledFunction, OrionNativeFunction, OrionInstance, OrionList, OrionDict
 from tokens import Token
 from dataclasses import dataclass
 from typing import Any
@@ -253,43 +253,62 @@ class VM:
 
             elif instruction == OpCode.OP_GET_SUBSCRIPT:
                 index = self.pop()
-                list_obj = self.pop()
+                collection = self.pop()
 
-                if not isinstance(list_obj, OrionList):
-                    print("RuntimeError: Can only subscript lists.")
-                    return InterpretResult.RUNTIME_ERROR, None
-
-                # Basic integer check, could be more robust
-                if not isinstance(index, int):
-                    print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
-                    return InterpretResult.RUNTIME_ERROR, None
-
-                try:
-                    self.push(list_obj.elements[index])
-                except IndexError:
-                    print(f"RuntimeError: List index {index} out of range.")
+                if isinstance(collection, OrionList):
+                    if not isinstance(index, int):
+                        print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
+                        return InterpretResult.RUNTIME_ERROR, None
+                    try:
+                        self.push(collection.elements[index])
+                    except IndexError:
+                        print(f"RuntimeError: List index {index} out of range.")
+                        return InterpretResult.RUNTIME_ERROR, None
+                elif isinstance(collection, OrionDict):
+                    if not isinstance(index, (str, int, bool, type(None))):
+                         print(f"RuntimeError: Dictionary key must be a valid hashable type.")
+                         return InterpretResult.RUNTIME_ERROR, None
+                    self.push(collection.pairs.get(index)) # .get() returns None for missing keys
+                else:
+                    print("RuntimeError: Object is not subscriptable.")
                     return InterpretResult.RUNTIME_ERROR, None
 
             elif instruction == OpCode.OP_SET_SUBSCRIPT:
                 value = self.pop()
                 index = self.pop()
-                list_obj = self.pop()
+                collection = self.pop()
 
-                if not isinstance(list_obj, OrionList):
-                    print("RuntimeError: Can only subscript lists.")
+                if isinstance(collection, OrionList):
+                    if not isinstance(index, int):
+                        print(f"RuntimeError: List index must be an integer.")
+                        return InterpretResult.RUNTIME_ERROR, None
+                    try:
+                        collection.elements[index] = value
+                        self.push(value)
+                    except IndexError:
+                        print(f"RuntimeError: List index {index} out of range.")
+                        return InterpretResult.RUNTIME_ERROR, None
+                elif isinstance(collection, OrionDict):
+                    if not isinstance(index, (str, int, bool, type(None))):
+                         print(f"RuntimeError: Dictionary key must be a valid hashable type.")
+                         return InterpretResult.RUNTIME_ERROR, None
+                    collection.pairs[index] = value
+                    self.push(value)
+                else:
+                    print("RuntimeError: Object is not subscriptable.")
                     return InterpretResult.RUNTIME_ERROR, None
 
-                if not isinstance(index, int):
-                    print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
-                    return InterpretResult.RUNTIME_ERROR, None
+            elif instruction == OpCode.OP_BUILD_DICT:
+                pair_count = read_byte()
+                pairs = {}
+                for _ in range(pair_count):
+                    value = self.pop()
+                    key = self.pop()
+                    # A more robust implementation would check key hashability
+                    pairs[key] = value
 
-                try:
-                    list_obj.elements[index] = value
-                    self.push(value) # Assignment is an expression
-                except IndexError:
-                    print(f"RuntimeError: List index {index} out of range.")
-                    # Don't push anything, the expression failed.
-                    return InterpretResult.RUNTIME_ERROR, None
+                dict_obj = OrionDict(pairs)
+                self.push(dict_obj)
 
 
     def _is_falsey(self, value) -> bool:

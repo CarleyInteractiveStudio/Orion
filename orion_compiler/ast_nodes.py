@@ -64,6 +64,10 @@ class ExprVisitor(ABC):
     def visit_set_subscript_expr(self, expr: 'SetSubscript'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_dict_literal_expr(self, expr: 'DictLiteral'):
+        raise NotImplementedError
+
 
 class StmtVisitor(ABC):
     @abstractmethod
@@ -257,6 +261,15 @@ class SetSubscript(Expr):
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_set_subscript_expr(self)
+
+
+@dataclass
+class DictLiteral(Expr):
+    keys: List[Expr]
+    values: List[Expr]
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_dict_literal_expr(self)
 
 
 # --- Concrete Statement Nodes ---

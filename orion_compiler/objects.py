@@ -16,6 +16,15 @@ class OrionList(OrionObject):
     def __str__(self) -> str:
         return f"[{', '.join(map(str, self.elements))}]"
 
+class OrionDict(OrionObject):
+    """Represents a dictionary (hash map) in Orion."""
+    def __init__(self, pairs: dict):
+        self.pairs = pairs
+
+    def __str__(self) -> str:
+        items = [f'"{k}": {v}' for k, v in self.pairs.items()]
+        return f"{{{', '.join(items)}}}"
+
 class OrionNativeFunction(OrionObject):
     """A wrapper for native Python functions exposed to Orion."""
     def __init__(self, arity: int, func: Callable):

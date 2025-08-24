@@ -387,6 +387,25 @@ class Parser:
             self._consume(TokenType.RIGHT_BRACKET, "Expect ']' after list elements.")
             return ast.ListLiteral(elements)
 
+        if self._match(TokenType.LEFT_BRACE):
+            keys = []
+            values = []
+            if not self._check(TokenType.RIGHT_BRACE):
+                while True:
+                    # For now, keys must be string literals. A more advanced implementation
+                    # could allow any expression.
+                    key = self._consume(TokenType.STRING, "Dictionary keys must be strings.")
+                    self._consume(TokenType.COLON, "Expect ':' after dictionary key.")
+                    value = self._expression()
+
+                    keys.append(ast.Literal(key.literal))
+                    values.append(value)
+
+                    if not self._match(TokenType.COMMA):
+                        break
+            self._consume(TokenType.RIGHT_BRACE, "Expect '}' after dictionary.")
+            return ast.DictLiteral(keys, values)
+
         raise self._error(self._peek(), "Expect expression.")
 
     # --- TOKEN CONSUMPTION & UTILITY METHODS ---

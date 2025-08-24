@@ -106,6 +106,10 @@ def main():
         ("List Get", "var a = [10, 20, 30]; return a[1];", 20),
         ("List Set", "var a = [10, 20]; a[0] = 99; return a[0];", 99),
         ("List Index with Expression", "var a = [10, 20, 30]; var i = 1; return a[i+1];", 30),
+        ("Dict Get", 'return {"a": 100, "b": 200}["a"];', 100),
+        ("Dict Set", 'var d = {"a": 1}; d["a"] = 99; return d["a"];', 99),
+        ("Dict Set New Key", 'var d = {}; d["new"] = "value"; return d["new"];', "value"),
+        ("Dict Get Missing Key", 'return {"a": 1}["b"];', None),
     ]
 
     runtime_error_tests = [
