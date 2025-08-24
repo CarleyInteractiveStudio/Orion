@@ -4,6 +4,7 @@ from lexer import Lexer
 from parser import Parser
 from compiler import compile as compile_source
 from vm import VM, InterpretResult
+from disassembler import disassemble_chunk
 
 def run_vm_test(name, source_code, expected_value):
     """
@@ -25,6 +26,10 @@ def run_vm_test(name, source_code, expected_value):
     if main_function is None:
         print(f"FAIL: {name} - Compiler returned None.")
         return False
+
+    print("\n--- Disassembly ---")
+    disassemble_chunk(main_function.chunk, f"{name} Chunk")
+    print("-------------------\n")
 
     vm = VM()
     result, final_value = vm.interpret(main_function)
