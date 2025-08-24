@@ -86,6 +86,14 @@ class VM:
                     return InterpretResult.RUNTIME_ERROR
                 self.globals[name] = self.peek(0)
 
+            elif instruction == OpCode.OP_GET_LOCAL:
+                slot = self._read_byte()
+                self.push(self.stack[slot])
+
+            elif instruction == OpCode.OP_SET_LOCAL:
+                slot = self._read_byte()
+                self.stack[slot] = self.peek(0)
+
     # --- Helper Methods ---
 
     def _read_byte(self) -> int:

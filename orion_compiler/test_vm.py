@@ -75,6 +75,21 @@ def main():
     if run_vm_test("Global Variables", source3, expected3):
         tests_passed += 1
 
+    # Test 4: Local Variables and Scoping
+    source4 = """
+    var a = "global a";
+    var b = "global b";
+    {
+        var a = "inner a";
+        b = a;
+    }
+    return a + b;
+    """
+    expected4 = "global a" + "inner a"
+    total_tests += 1
+    if run_vm_test("Local Variables and Scopes", source4, expected4):
+        tests_passed += 1
+
     print(f"\n--- VM Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

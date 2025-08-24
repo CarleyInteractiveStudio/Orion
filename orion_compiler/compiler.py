@@ -1,5 +1,12 @@
+from dataclasses import dataclass
 import ast_nodes as ast
 from bytecode import Chunk, OpCode
+from tokens import Token
+
+@dataclass
+class Local:
+    name: Token
+    depth: int
 
 class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     """
@@ -7,6 +14,8 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     """
     def __init__(self):
         self.chunk = Chunk()
+        self.locals: list[Local] = []
+        self.scope_depth: int = 0
         self.had_error = False
 
     def compile(self, statements: list[ast.Stmt]) -> Chunk | None:
@@ -100,11 +109,19 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     # ...
     # For now, I will add placeholders to avoid abstract class errors.
     def visit_variable_expr(self, expr: ast.Variable):
-        self._emit_bytes(OpCode.OP_GET_GLOBAL, self._make_constant(expr.name.lexeme))
+        arg = self._resolve_local(expr.name)
+        if arg != -1:
+            self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
+        else:
+            self._emit_bytes(OpCode.OP_GET_GLOBAL, self._make_constant(expr.name.lexeme))
 
     def visit_assign_expr(self, expr: ast.Assign):
         self._compile_expr(expr.value)
-        self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(expr.name.lexeme))
+        arg = self._resolve_local(expr.name)
+        if arg != -1:
+            self._emit_bytes(OpCode.OP_SET_LOCAL, arg)
+        else:
+            self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(expr.name.lexeme))
 
     def visit_logical_expr(self, expr: ast.Logical): pass
     def visit_call_expr(self, expr: ast.Call): pass
@@ -112,13 +129,21 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_set_expr(self, expr: ast.Set): pass
     def visit_this_expr(self, expr: ast.This): pass
     def visit_var_stmt(self, stmt: ast.Var):
-        if stmt.initializer:
-            self._compile_expr(stmt.initializer)
-        else:
-            self._emit_byte(OpCode.OP_NIL) # Default value
+        self._compile_expr(stmt.initializer if stmt.initializer else ast.Literal(None))
+
+        # For global variables, we define them by name.
+        # For local variables, they are already on the stack.
+        if self.scope_depth > 0:
+            self._add_local(stmt.name)
+            return
 
         self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
-    def visit_block_stmt(self, stmt: ast.Block): pass
+
+    def visit_block_stmt(self, stmt: ast.Block):
+        self._begin_scope()
+        for statement in stmt.statements:
+            self._compile_stmt(statement)
+        self._end_scope()
     def visit_if_stmt(self, stmt: ast.If): pass
     def visit_while_stmt(self, stmt: ast.While): pass
     def visit_function_stmt(self, stmt: ast.Function): pass
@@ -135,3 +160,32 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
     def visit_use_stmt(self, stmt: ast.UseStmt): pass
+
+    # --- Scope and Local Variable Helpers ---
+
+    def _begin_scope(self):
+        self.scope_depth += 1
+
+    def _end_scope(self):
+        self.scope_depth -= 1
+
+        # Pop local variables from the stack when the scope ends
+        while self.locals and self.locals[-1].depth > self.scope_depth:
+            self._emit_byte(OpCode.OP_POP)
+            self.locals.pop()
+
+    def _add_local(self, name: Token):
+        # A real compiler would check for redeclaration here.
+        self.locals.append(Local(name, self.scope_depth))
+
+    def _resolve_local(self, name: Token) -> int:
+        """
+        Finds a local variable in the compiler's scope stack.
+        Returns the stack slot index, or -1 if not found.
+        """
+        for i in range(len(self.locals) - 1, -1, -1):
+            local = self.locals[i]
+            if name.lexeme == local.name.lexeme:
+                # A real compiler would check if the var was initialized here.
+                return i
+        return -1
