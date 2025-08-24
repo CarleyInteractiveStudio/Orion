@@ -4,6 +4,7 @@ from tokens import Token
 from dataclasses import dataclass
 from typing import Any
 import time
+import os
 
 @dataclass
 class CallFrame:
@@ -22,16 +23,49 @@ class VM:
         self.stack: list = []
         self.globals: dict = {}
 
+        # --- Native Functions ---
         self._define_native("clock", 0, lambda: time.time())
-
         def native_print(*args):
-            # A more robust version would handle stringifying Orion objects
-            print(*args)
+            print(*[str(arg) for arg in args])
             return None
         self._define_native("print", None, native_print) # Variadic
 
+        # --- Native Modules ---
+        self.native_modules: dict = {}
+        self._init_io_module()
+
     def _define_native(self, name: str, arity: int, func):
         self.globals[name] = OrionNativeFunction(arity, func)
+
+    def _init_io_module(self):
+        def native_io_read(path):
+            try:
+                with open(path, 'r') as f:
+                    return f.read()
+            except FileNotFoundError:
+                # In the future, we could have a proper error system
+                return None
+
+        def native_io_write(path, content):
+            with open(path, 'w') as f:
+                f.write(str(content))
+            return None # Write returns nil
+
+        def native_io_append(path, content):
+            with open(path, 'a') as f:
+                f.write(str(content))
+            return None
+
+        def native_io_exists(path):
+            return os.path.exists(path)
+
+        io_module = {
+            "read": OrionNativeFunction(1, native_io_read),
+            "write": OrionNativeFunction(2, native_io_write),
+            "append": OrionNativeFunction(2, native_io_append),
+            "exists": OrionNativeFunction(1, native_io_exists),
+        }
+        self.native_modules["io"] = io_module
 
     def interpret(self, main_function: OrionCompiledFunction) -> InterpretResult:
         # Reset stack and frames for a new run
@@ -155,6 +189,15 @@ class VM:
 
             elif instruction == OpCode.OP_USE:
                 module_name = read_constant()
+
+                # Check for native modules first
+                if module_name in self.native_modules:
+                    namespace = OrionInstance()
+                    namespace.fields = self.native_modules[module_name]
+                    self.push(namespace)
+                    continue
+
+                # Fallback to file-based modules
                 file_path = f"orion_compiler/{module_name}.orion"
 
                 from orion import Orion

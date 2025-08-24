@@ -1,5 +1,6 @@
 import sys
 import io
+import os
 from contextlib import redirect_stdout
 
 from lexer import Lexer
@@ -112,16 +113,32 @@ def main():
         ("Index Out of Bounds (Set)", "var a = [1]; a[10] = 2;", "List index 10 out of range"),
     ]
 
+    # --- IO Tests ---
+    TEST_FILE = "orion_test_file.tmp"
+    io_tests = [
+        ("IO Write & Exists", f'use io; io.write("{TEST_FILE}", "hello"); return io.exists("{TEST_FILE}");', True),
+        ("IO Read", f'use io; return io.read("{TEST_FILE}");', "hello"),
+        ("IO Append", f'use io; io.append("{TEST_FILE}", " world"); return io.read("{TEST_FILE}");', "hello world"),
+        ("IO Read Non-existent", 'use io; return io.read("non_existent_file.tmp");', None),
+    ]
+
+    all_tests = tests + io_tests
     tests_passed = 0
-    for name, source, expected in tests:
-        if run_vm_test(name, source, expected):
-            tests_passed += 1
 
-    for name, source, expected in runtime_error_tests:
-        if run_vm_runtime_error_test(name, source, expected):
-            tests_passed += 1
+    try:
+        for name, source, expected in all_tests:
+            if run_vm_test(name, source, expected):
+                tests_passed += 1
 
-    total_tests = len(tests) + len(runtime_error_tests)
+        for name, source, expected in runtime_error_tests:
+            if run_vm_runtime_error_test(name, source, expected):
+                tests_passed += 1
+    finally:
+        # Clean up the test file
+        if os.path.exists(TEST_FILE):
+            os.remove(TEST_FILE)
+
+    total_tests = len(all_tests) + len(runtime_error_tests)
 
     # Special test for print() that checks stdout
     print(f"--- Running VM Test: Native Print ---")
