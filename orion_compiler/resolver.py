@@ -13,6 +13,7 @@ class Resolver(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self):
         # Each scope maps var name -> (is_defined: bool, type: Optional[str], is_const: bool)
         self.scopes: List[Dict[str, (bool, Optional[str], bool)]] = []
+        self.current_function_return_type: Optional[str] = None
         self.had_error = False
 
     def resolve(self, statements: List[ast.Stmt]):
@@ -80,6 +81,10 @@ class Resolver(ast.ExprVisitor, ast.StmtVisitor):
                 return "bool"
         if isinstance(expr, ast.Logical):
             return "bool"
+        if isinstance(expr, ast.Call):
+            callee_type = self._type_of_expr(expr.callee)
+            if isinstance(callee_type, dict) and "return" in callee_type:
+                return callee_type["return"]
         # Fallback for complex expressions like calls or gets.
         return "any"
 
@@ -136,18 +141,34 @@ class Resolver(ast.ExprVisitor, ast.StmtVisitor):
             self._report_error(expr.name, f"Type mismatch: cannot assign value of type '{value_type}' to variable of type '{var_type}'.")
 
     def visit_function_stmt(self, stmt: ast.Function):
+        # The "type" of a function is its signature.
+        param_types = [p.type_annotation.name.lexeme if (p.type_annotation and isinstance(p.type_annotation, ast.Variable)) else "any" for p in stmt.params]
+        return_type = stmt.return_type.name.lexeme if (stmt.return_type and isinstance(stmt.return_type, ast.Variable)) else "void"
+        func_type = {"params": param_types, "return": return_type}
+
         self._declare(stmt.name)
-        self._define(stmt.name)
+        self._define(stmt.name, func_type)
         self._resolve_function(stmt)
 
     def _resolve_function(self, function: ast.Function):
+        # Save and set the current function's expected return type
+        enclosing_function_return_type = self.current_function_return_type
+        if function.return_type and isinstance(function.return_type, ast.Variable):
+            self.current_function_return_type = function.return_type.name.lexeme
+        else:
+            self.current_function_return_type = "void" # Default return type
+
         self._begin_scope()
         for param in function.params:
-            self._declare(param)
-            # Parameters are mutable by default.
-            self._define(param, "any", is_const=False)
+            param_type = param.type_annotation.name.lexeme if (param.type_annotation and isinstance(param.type_annotation, ast.Variable)) else "any"
+            self._declare(param.name)
+            self._define(param.name, param_type, is_const=False)
+
         self.resolve(function.body)
         self._end_scope()
+
+        # Restore the previous function context
+        self.current_function_return_type = enclosing_function_return_type
 
     # --- Other Visitor Methods (Recursive Traversal) ---
 
@@ -155,7 +176,20 @@ class Resolver(ast.ExprVisitor, ast.StmtVisitor):
     def visit_if_stmt(self, stmt: ast.If): self._resolve_expr(stmt.condition); self._resolve_stmt(stmt.then_branch);
     def visit_while_stmt(self, stmt: ast.While): self._resolve_expr(stmt.condition); self._resolve_stmt(stmt.body);
     def visit_return_stmt(self, stmt: ast.Return):
-        if stmt.value: self._resolve_expr(stmt.value)
+        if self.current_function_return_type is None:
+            self._report_error(stmt.keyword, "Can't return from top-level code.")
+
+        if stmt.value:
+            if self.current_function_return_type == "void":
+                self._report_error(stmt.keyword, "Cannot return a value from a void function.")
+
+            self._resolve_expr(stmt.value)
+            return_value_type = self._type_of_expr(stmt.value)
+            if return_value_type != self.current_function_return_type:
+                self._report_error(stmt.keyword, f"Type mismatch: function should return '{self.current_function_return_type}' but returns '{return_value_type}'.")
+        else: # return;
+            if self.current_function_return_type != "void":
+                self._report_error(stmt.keyword, f"Function must return a value of type '{self.current_function_return_type}'.")
     def visit_binary_expr(self, expr: ast.Binary):
         self._resolve_expr(expr.left)
         self._resolve_expr(expr.right)
@@ -172,7 +206,26 @@ class Resolver(ast.ExprVisitor, ast.StmtVisitor):
             if not ((left_type in ["float", "any"] and right_type in ["float", "any"]) or \
                     (left_type in ["string", "any"] and right_type in ["string", "any"])):
                 self._report_error(expr.operator, "Operands must be two numbers or two strings.")
-    def visit_call_expr(self, expr: ast.Call): self._resolve_expr(expr.callee); [self._resolve_expr(arg) for arg in expr.arguments]
+    def visit_call_expr(self, expr: ast.Call):
+        self._resolve_expr(expr.callee)
+
+        callee_type = self._type_of_expr(expr.callee)
+        if not isinstance(callee_type, dict) or "params" not in callee_type:
+            # Not a function type we can check, e.g. a component constructor.
+            return
+
+        param_types = callee_type["params"]
+
+        if len(expr.arguments) != len(param_types):
+            self._report_error(expr.paren, f"Expected {len(param_types)} arguments but got {len(expr.arguments)}.")
+            return
+
+        for i, arg in enumerate(expr.arguments):
+            self._resolve_expr(arg)
+            arg_type = self._type_of_expr(arg)
+            param_type = param_types[i]
+            if arg_type != "any" and param_type != "any" and arg_type != param_type:
+                self._report_error(expr.paren, f"Argument {i+1} type mismatch: expected '{param_type}', got '{arg_type}'.")
     def visit_get_expr(self, expr: ast.Get): self._resolve_expr(expr.object)
     def visit_grouping_expr(self, expr: ast.Grouping): self._resolve_expr(expr.expression)
     def visit_literal_expr(self, expr: ast.Literal): pass

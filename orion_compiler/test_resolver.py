@@ -82,6 +82,38 @@ def main():
     if run_resolver_test("Valid Code", source5, expected_error=None):
         tests_passed += 1
 
+    # --- New Function Type-Checking Tests ---
+
+    # Test 6: Wrong argument type
+    source6 = 'function foo(a: int) {} foo("bar");'
+    total_tests += 1
+    if run_resolver_test("Wrong Argument Type", source6, "expected 'int', got 'string'"):
+        tests_passed += 1
+
+    # Test 7: Wrong argument count
+    source7 = "function foo(a: int, b: int) {} foo(1);"
+    total_tests += 1
+    if run_resolver_test("Wrong Argument Count", source7, "Expected 2 arguments but got 1"):
+        tests_passed += 1
+
+    # Test 8: Wrong return type
+    source8 = 'function foo(): int { return "bar"; }'
+    total_tests += 1
+    if run_resolver_test("Wrong Return Type", source8, "function should return 'int' but returns 'string'"):
+        tests_passed += 1
+
+    # Test 9: Return value from void function
+    source9 = "function foo() { return 1; }"
+    total_tests += 1
+    if run_resolver_test("Return from Void Function", source9, "Cannot return a value from a void function"):
+        tests_passed += 1
+
+    # Test 10: Valid typed function
+    source10 = "function foo(a: float): float { return a; } var x = foo(1);"
+    total_tests += 1
+    if run_resolver_test("Valid Typed Function", source10, expected_error=None):
+        tests_passed += 1
+
     print(f"\n--- Resolver Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

@@ -1,7 +1,7 @@
 module math;
 
 // A simple function to be exported.
-function add(a, b) {
+function add(a: float, b: float): float {
     return a + b;
 }
 

@@ -119,20 +119,30 @@ class Parser:
         name = self._consume(TokenType.IDENTIFIER, f"Expect {kind} name.")
         self._consume(TokenType.LEFT_PAREN, f"Expect '(' after {kind} name.")
 
-        parameters: List[Token] = []
+        parameters: List[ast.Param] = []
         if not self._check(TokenType.RIGHT_PAREN):
             while True:
                 if len(parameters) >= 255:
                     self._error(self._peek(), "Can't have more than 255 parameters.")
-                parameters.append(self._consume(TokenType.IDENTIFIER, "Expect parameter name."))
+
+                param_name = self._consume(TokenType.IDENTIFIER, "Expect parameter name.")
+                param_type = None
+                if self._match(TokenType.COLON):
+                    param_type = self._primary() # A type is a primary expression
+                parameters.append(ast.Param(param_name, param_type))
+
                 if not self._match(TokenType.COMMA):
                     break
 
         self._consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.")
 
+        return_type: Optional[ast.Expr] = None
+        if self._match(TokenType.COLON):
+            return_type = self._primary()
+
         self._consume(TokenType.LEFT_BRACE, f"Expect '{{' before {kind} body.")
         body = self._block()
-        return ast.Function(name, parameters, body)
+        return ast.Function(name, parameters, body, return_type)
 
     def _module_statement(self) -> ast.Stmt:
         """Parses a module declaration."""

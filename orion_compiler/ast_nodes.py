@@ -267,10 +267,16 @@ class While(Stmt):
 
 
 @dataclass
+class Param:
+    name: Token
+    type_annotation: Optional[Expr]
+
+@dataclass
 class Function(Stmt):
     name: Token
-    params: List[Token]
+    params: List[Param]
     body: List[Stmt]
+    return_type: Optional[Expr]
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_function_stmt(self)

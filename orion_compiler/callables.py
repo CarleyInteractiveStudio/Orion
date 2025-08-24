@@ -53,7 +53,7 @@ class OrionFunction(OrionCallable):
         # This is what enables lexical scoping.
         environment = Environment(self.closure)
         for i, param in enumerate(self.declaration.params):
-            environment.define(param.lexeme, arguments[i])
+            environment.define(param.name.lexeme, arguments[i])
 
         try:
             interpreter._execute_block(self.declaration.body, environment)
