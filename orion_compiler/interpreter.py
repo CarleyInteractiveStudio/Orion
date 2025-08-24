@@ -277,9 +277,16 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     def visit_get_expr(self, expr: ast.Get):
         obj = self._evaluate(expr.object)
         if isinstance(obj, OrionInstance):
-            return obj.get(expr.name)
+            # If the property is a function, bind it to the instance ('this')
+            prop = obj.get(expr.name)
+            if isinstance(prop, OrionFunction):
+                return prop.bind(obj)
+            return prop
 
         raise OrionRuntimeError(expr.name, "Only instances have properties.")
+
+    def visit_this_expr(self, expr: ast.This):
+        return self.environment.get(expr.keyword)
 
     def visit_set_expr(self, expr: ast.Set):
         obj = self._evaluate(expr.object)

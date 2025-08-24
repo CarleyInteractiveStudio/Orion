@@ -335,6 +335,7 @@ class Parser:
         """Parses primary expressions (literals, grouping, identifiers)."""
         if self._match(TokenType.FALSE): return ast.Literal(False)
         if self._match(TokenType.TRUE): return ast.Literal(True)
+        if self._match(TokenType.THIS): return ast.This(self._previous())
 
         if self._match(TokenType.NUMBER, TokenType.STRING):
             return ast.Literal(self._previous().literal)

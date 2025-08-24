@@ -63,6 +63,12 @@ class OrionFunction(OrionCallable):
         # If no 'return' is encountered, functions implicitly return None.
         return None
 
+    def bind(self, instance: 'OrionInstance') -> 'OrionFunction':
+        """Binds 'this' to a specific instance."""
+        environment = Environment(self.closure)
+        environment.define("this", instance)
+        return OrionFunction(self.declaration, environment)
+
     def __str__(self) -> str:
         return f"<fn {self.declaration.name.lexeme}>"
 
@@ -84,15 +90,25 @@ class OrionInstance:
         return "<instance>"
 
 
-class OrionComponent(OrionInstance):
+class OrionComponent(OrionInstance, OrionCallable):
     """
-    Represents a component declaration's runtime data, primarily its styles.
+    Represents a component declaration. It's callable and produces instances.
     """
     def __init__(self, name: str):
         super().__init__()
         self.name = name
         self.fields["styles"] = {}
         self.fields["state_styles"] = {}
+
+    def arity(self) -> int:
+        # For now, component constructors don't take arguments.
+        return 0
+
+    def call(self, interpreter: 'Interpreter', arguments: List[Any]) -> Any:
+        instance = OrionInstance()
+        # The new instance inherits the base styles of the component.
+        instance.fields = self.fields["styles"].copy()
+        return instance
 
     def __str__(self) -> str:
         return f"<component {self.name}>"

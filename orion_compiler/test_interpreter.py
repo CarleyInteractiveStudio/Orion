@@ -175,6 +175,27 @@ def main():
     if run_interpreter_test("Module System", source10, expected10):
         tests_passed += 1
 
+    # Test 11: Component instantiation and 'this'
+    source11 = """
+    component Button {
+        text: "default";
+    }
+
+    function setText(new_text) {
+        this.text = new_text;
+    }
+
+    var my_button = Button();
+    my_button.click = setText;
+    my_button.click("hello world");
+
+    var final_text = my_button.text;
+    """
+    expected11 = {"final_text": "hello world"}
+    total_tests += 1
+    if run_interpreter_test("Component Instantiation and 'this'", source11, expected11):
+        tests_passed += 1
+
     print(f"\n--- Interpreter Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

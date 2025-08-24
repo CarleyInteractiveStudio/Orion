@@ -48,6 +48,10 @@ class ExprVisitor(ABC):
     def visit_set_expr(self, expr: 'Set'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_this_expr(self, expr: 'This'):
+        raise NotImplementedError
+
 
 class StmtVisitor(ABC):
     @abstractmethod
@@ -204,6 +208,14 @@ class Set(Expr):
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_set_expr(self)
+
+
+@dataclass
+class This(Expr):
+    keyword: Token
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_this_expr(self)
 
 
 # --- Concrete Statement Nodes ---

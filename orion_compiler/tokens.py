@@ -56,6 +56,7 @@ class TokenType(Enum):
     RETURN = auto()
     STRING_TYPE = auto()
     SWITCH = auto()
+    THIS = auto()
     TRUE = auto()
     USE = auto()
     VAR = auto()
@@ -101,6 +102,7 @@ keywords = {
     "return": TokenType.RETURN,
     "string": TokenType.STRING_TYPE,
     "switch": TokenType.SWITCH,
+    "this": TokenType.THIS,
     "true": TokenType.TRUE,
     "use": TokenType.USE,
     "var": TokenType.VAR,
