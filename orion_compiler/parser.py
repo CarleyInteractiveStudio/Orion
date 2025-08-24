@@ -57,8 +57,7 @@ class Parser:
 
         type_annotation: Optional[ast.Expr] = None
         if self._match(TokenType.COLON):
-            # A type is not a full expression. It's more like a primary.
-            type_annotation = self._primary()
+            type_annotation = self._type_annotation()
 
         initializer: Optional[ast.Expr] = None
         if self._match(TokenType.EQUAL):
@@ -128,7 +127,7 @@ class Parser:
                 param_name = self._consume(TokenType.IDENTIFIER, "Expect parameter name.")
                 param_type = None
                 if self._match(TokenType.COLON):
-                    param_type = self._primary() # A type is a primary expression
+                    param_type = self._type_annotation()
                 parameters.append(ast.Param(param_name, param_type))
 
                 if not self._match(TokenType.COMMA):
@@ -138,7 +137,7 @@ class Parser:
 
         return_type: Optional[ast.Expr] = None
         if self._match(TokenType.COLON):
-            return_type = self._primary()
+            return_type = self._type_annotation()
 
         self._consume(TokenType.LEFT_BRACE, f"Expect '{{' before {kind} body.")
         body = self._block()
@@ -407,6 +406,22 @@ class Parser:
             return ast.DictLiteral(keys, values)
 
         raise self._error(self._peek(), "Expect expression.")
+
+    def _type_annotation(self) -> ast.Expr:
+        """Parses a type annotation, which can be simple or generic."""
+        base_type = self._primary()
+
+        if self._match(TokenType.LEFT_BRACKET):
+            params = []
+            if not self._check(TokenType.RIGHT_BRACKET):
+                while True:
+                    params.append(self._type_annotation())
+                    if not self._match(TokenType.COMMA):
+                        break
+            self._consume(TokenType.RIGHT_BRACKET, "Expect ']' after type parameters.")
+            return ast.GenericType(base_type, params)
+
+        return base_type
 
     # --- TOKEN CONSUMPTION & UTILITY METHODS ---
 

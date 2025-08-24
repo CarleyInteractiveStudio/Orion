@@ -85,6 +85,18 @@ def disassemble_instruction(chunk: Chunk, offset: int) -> int:
         return simple_instruction("OP_TRUE", offset)
     elif instruction == OpCode.OP_FALSE:
         return simple_instruction("OP_FALSE", offset)
+    elif instruction == OpCode.OP_GET_PROPERTY:
+        return constant_instruction("OP_GET_PROPERTY", chunk, offset)
+    elif instruction == OpCode.OP_SET_PROPERTY:
+        return constant_instruction("OP_SET_PROPERTY", chunk, offset)
+    elif instruction == OpCode.OP_BUILD_LIST:
+        return byte_instruction("OP_BUILD_LIST", chunk, offset)
+    elif instruction == OpCode.OP_GET_SUBSCRIPT:
+        return simple_instruction("OP_GET_SUBSCRIPT", offset)
+    elif instruction == OpCode.OP_SET_SUBSCRIPT:
+        return simple_instruction("OP_SET_SUBSCRIPT", offset)
+    elif instruction == OpCode.OP_BUILD_DICT:
+        return byte_instruction("OP_BUILD_DICT", chunk, offset)
 
     else:
         print(f"Unknown opcode {instruction}")

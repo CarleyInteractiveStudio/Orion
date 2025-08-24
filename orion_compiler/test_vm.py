@@ -9,7 +9,7 @@ from compiler import compile as compile_source
 from vm import VM, InterpretResult
 from disassembler import disassemble_chunk
 
-def run_vm_test(name, source_code, expected_value):
+def run_vm_test(name, source_code, expected_value, disassemble=False):
     """
     Runs the full new pipeline and checks the final result from the VM stack.
     """
@@ -29,6 +29,9 @@ def run_vm_test(name, source_code, expected_value):
     if main_function is None:
         print(f"FAIL: {name} - Compiler returned None.")
         return False
+
+    if disassemble:
+        disassemble_chunk(main_function.chunk, "Main Script")
 
     vm = VM()
     result, final_value = vm.interpret(main_function)

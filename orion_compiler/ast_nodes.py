@@ -68,6 +68,10 @@ class ExprVisitor(ABC):
     def visit_dict_literal_expr(self, expr: 'DictLiteral'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_generic_type_expr(self, expr: 'GenericType'):
+        raise NotImplementedError
+
 
 class StmtVisitor(ABC):
     @abstractmethod
@@ -270,6 +274,15 @@ class DictLiteral(Expr):
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_dict_literal_expr(self)
+
+
+@dataclass
+class GenericType(Expr):
+    base_type: Expr
+    type_parameters: List[Expr]
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_generic_type_expr(self)
 
 
 # --- Concrete Statement Nodes ---

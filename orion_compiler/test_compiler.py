@@ -67,8 +67,8 @@ def run_compiler_valid_test(name, source_code):
 
 def main():
     error_tests = [
-        ("Assign wrong type", "var x: number = 'a';", "Initializer of type STRING cannot be assigned to variable of type NUMBER"),
-        ("Re-assign wrong type", "var x: bool; x = 1;", "Cannot assign value of type NUMBER to variable of type BOOL"),
+        ("Assign wrong type", "var x: number = 'a';", "Initializer of type string cannot be assigned to variable of type number"),
+        ("Re-assign wrong type", "var x: bool; x = 1;", "Cannot assign value of type number to variable of type bool"),
         ("Numeric operator error", "'a' - 'b';", "Operands for MINUS must be numbers"),
         ("Addition operator error", "1 + 'b';", "Operands for '+' must be two numbers or two strings"),
         ("Comparison operator error", "true > false;", "Operands for GREATER must be numbers"),
@@ -78,6 +78,12 @@ def main():
         ("While condition error", "while ('a') {}", "While condition must be a boolean"),
         ("Subscript non-subscriptable", "var x: number = 1; return x[0];", "is not subscriptable"),
         ("Subscript with non-number", "var l = [1]; return l['a'];", "List index must be a number"),
+        ("Undeclared variable", "return x + 1;", "Undeclared variable 'x'"),
+        # New Generic Type Tests
+        ("Wrong type in list literal", "var l: list[number] = [1, 'a'];", "of type list[any] cannot be assigned to variable of type list[number]"),
+        ("Set list element with wrong type", "var l: list[number] = [1]; l[0] = 'a';", "of type string to a list of type list[number]"),
+        ("Assign list element to wrong type", "var l: list[number] = [1]; var s: string = l[0];", "of type number cannot be assigned to variable of type string"),
+        ("Assigning list[any] to list[number]", "var l: list[any] = [1]; var n: list[number] = l;", "of type list[any] cannot be assigned to variable of type list[number]"),
     ]
 
     valid_tests = [
@@ -92,6 +98,11 @@ def main():
         ("Dict creation", 'var d = {"a": 1, "b": "two"};'),
         ("Valid get dict subscript", 'var d = {"a": 1}; var x = d["a"];'),
         ("Valid set dict subscript", 'var d = {"a": 1}; d["a"] = 2;'),
+        # New Generic Type Tests
+        ("Declare generic list", "var l: list[number];"),
+        ("Assign correctly typed list", "var l: list[number] = [1, 2];"),
+        ("Assign list[number] to list[any]", "var l: list[any] = [1, 2];"),
+        ("Get element from typed list", "var l: list[string] = ['a']; var s: string = l[0];"),
     ]
 
     tests_passed = 0

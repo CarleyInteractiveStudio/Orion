@@ -218,11 +218,21 @@ class VM:
 
             elif instruction == OpCode.OP_GET_PROPERTY:
                 instance = self.peek(0)
+                name = read_constant()
+
+                if isinstance(instance, OrionList):
+                    if name == "length":
+                        self.pop() # Pop the list
+                        self.push(len(instance.elements))
+                        continue
+                    else:
+                        print(f"RuntimeError: Lists do not have a property named '{name}'.")
+                        return InterpretResult.RUNTIME_ERROR, None
+
                 if not isinstance(instance, OrionInstance):
-                    print("RuntimeError: Only instances have properties.")
+                    print("RuntimeError: Only instances and lists have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
 
-                name = read_constant()
                 value = instance.get(Token(None, name, None, 0)) # Dummy token
 
                 self.pop() # Pop the instance
@@ -230,6 +240,10 @@ class VM:
 
             elif instruction == OpCode.OP_SET_PROPERTY:
                 instance = self.peek(1)
+                if isinstance(instance, OrionList):
+                    print("RuntimeError: Cannot set properties on a list.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
                 if not isinstance(instance, OrionInstance):
                     print("RuntimeError: Only instances have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
