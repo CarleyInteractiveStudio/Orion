@@ -42,23 +42,33 @@ class Parser:
                 return self._component_declaration()
             if self._match(TokenType.FUNCTION):
                 return self._function("function")
-            if self._match(TokenType.VAR):
-                return self._var_declaration()
+            if self._match(TokenType.VAR, TokenType.LET):
+                return self._var_declaration(is_const=False)
+            if self._match(TokenType.CONST):
+                return self._var_declaration(is_const=True)
             return self._statement()
         except ParseError:
             self._synchronize()
             return None
 
-    def _var_declaration(self) -> ast.Stmt:
-        """Parses a variable declaration: 'var' IDENTIFIER ('=' expression)? ';'"""
+    def _var_declaration(self, is_const: bool) -> ast.Stmt:
+        """Parses a variable declaration: ('var'|'let'|'const') IDENTIFIER (':' type)? ('=' expression)? ';'"""
         name = self._consume(TokenType.IDENTIFIER, "Expect variable name.")
+
+        type_annotation: Optional[ast.Expr] = None
+        if self._match(TokenType.COLON):
+            # A type is not a full expression. It's more like a primary.
+            type_annotation = self._primary()
 
         initializer: Optional[ast.Expr] = None
         if self._match(TokenType.EQUAL):
             initializer = self._expression()
 
+        if is_const and initializer is None:
+            self._error(name, "Constant variables must be initialized.")
+
         self._consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.")
-        return ast.Var(name, initializer)
+        return ast.Var(name, type_annotation, initializer, is_const)
 
     def _statement(self) -> ast.Stmt:
         """Parses a statement. This includes if, while, return, expression, and block statements."""
@@ -339,6 +349,9 @@ class Parser:
 
         if self._match(TokenType.NUMBER, TokenType.STRING):
             return ast.Literal(self._previous().literal)
+
+        if self._match(TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.STRING_TYPE):
+            return ast.Variable(self._previous())
 
         if self._match(TokenType.IDENTIFIER):
             return ast.Variable(self._previous())

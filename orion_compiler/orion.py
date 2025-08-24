@@ -1,6 +1,7 @@
 from lexer import Lexer
 from parser import Parser
 from interpreter import Interpreter
+from resolver import Resolver
 
 class Orion:
     """
@@ -17,20 +18,23 @@ class Orion:
         lexer = Lexer(source)
         tokens = lexer.scan_tokens()
 
-        # In a real compiler, we would check for lexer errors here.
-
         parser = Parser(tokens)
         statements = parser.parse()
 
-        # Check for parser errors (indicated by the parser printing errors).
-        # A better system would have the parser return an error object.
-        # For now, we'll assume no errors if statements are produced.
+        # If the parser had an error, stop.
+        # A better system would be needed for a real compiler.
+        if not statements and len(tokens) > 1: # Heuristic for now
+            return None
 
         interpreter = Interpreter()
-        # We can pass the interpreter to the parser if needed for error reporting.
 
-        # The interpret method will execute the code.
-        # We'll modify it to return the final environment for module exports.
+        resolver = Resolver()
+        resolver.resolve(statements)
+
+        # If the resolver had an error, stop.
+        if resolver.had_error:
+            return None
+
         final_environment = interpreter.interpret(statements)
         return final_environment
 

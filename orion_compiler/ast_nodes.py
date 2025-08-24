@@ -231,7 +231,9 @@ class Expression(Stmt):
 @dataclass
 class Var(Stmt):
     name: Token
+    type_annotation: Optional[Expr]
     initializer: Optional[Expr]
+    is_const: bool
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_var_stmt(self)

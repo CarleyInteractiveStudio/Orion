@@ -129,6 +129,9 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
     def visit_set_expr(self, expr: ast.Set) -> str:
         return self._parenthesize(f"= {expr.name.lexeme}", expr.object, expr.value)
 
+    def visit_this_expr(self, expr: ast.This) -> str:
+        return "this"
+
     # --- Helper Method ---
 
     def _parenthesize(self, name: str, *parts) -> str:
