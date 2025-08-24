@@ -1,0 +1,9 @@
+module math;
+
+// A simple function to be exported.
+function add(a, b) {
+    return a + b;
+}
+
+// A simple variable to be exported.
+var PI = 3.14159;

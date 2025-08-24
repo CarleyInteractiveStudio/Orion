@@ -153,6 +153,28 @@ def main():
     if run_interpreter_test("Functions and Recursion (Fibonacci)", source8, expected8):
         tests_passed += 1
 
+    # Test 9: Property Get/Set
+    source9 = """
+    component Box {}
+    var box = Box;
+    box.width = 100;
+    var w = box.width;
+    """
+    expected9 = {"w": 100}
+    total_tests += 1
+    if run_interpreter_test("Property Get and Set", source9, expected9):
+        tests_passed += 1
+
+    # Test 10: Module import and use
+    source10 = """
+    use math;
+    var result = math.add(10, 5) + math.PI;
+    """
+    expected10 = {"result": 15.0 + 3.14159}
+    total_tests += 1
+    if run_interpreter_test("Module System", source10, expected10):
+        tests_passed += 1
+
     print(f"\n--- Interpreter Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

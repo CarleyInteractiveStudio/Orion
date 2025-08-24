@@ -40,6 +40,14 @@ class ExprVisitor(ABC):
     def visit_call_expr(self, expr: 'Call'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_get_expr(self, expr: 'Get'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_set_expr(self, expr: 'Set'):
+        raise NotImplementedError
+
 
 class StmtVisitor(ABC):
     @abstractmethod
@@ -80,6 +88,14 @@ class StmtVisitor(ABC):
 
     @abstractmethod
     def visit_state_block_stmt(self, stmt: 'StateBlock'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_module_stmt(self, stmt: 'ModuleStmt'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_use_stmt(self, stmt: 'UseStmt'):
         raise NotImplementedError
 
 
@@ -169,6 +185,25 @@ class Call(Expr):
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_call_expr(self)
+
+
+@dataclass
+class Get(Expr):
+    object: Expr
+    name: Token
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_get_expr(self)
+
+
+@dataclass
+class Set(Expr):
+    object: Expr
+    name: Token
+    value: Expr
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_set_expr(self)
 
 
 # --- Concrete Statement Nodes ---
@@ -263,3 +298,20 @@ class ComponentStmt(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_component_stmt(self)
+
+
+@dataclass
+class ModuleStmt(Stmt):
+    name: Token
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_module_stmt(self)
+
+
+@dataclass
+class UseStmt(Stmt):
+    name: Token
+    alias: Optional[Token]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_use_stmt(self)

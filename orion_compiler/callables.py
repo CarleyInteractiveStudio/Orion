@@ -4,6 +4,7 @@ from typing import List, Any, TYPE_CHECKING
 import ast_nodes as ast
 from environment import Environment
 from errors import Return
+from errors import OrionRuntimeError
 
 # This is a common pattern to break circular import cycles.
 # The import is only done for static type checking, not at runtime.
@@ -66,14 +67,32 @@ class OrionFunction(OrionCallable):
         return f"<fn {self.declaration.name.lexeme}>"
 
 
-class OrionComponent:
+class OrionInstance:
+    """Base class for anything that has fields."""
+    def __init__(self):
+        self.fields = {}
+
+    def get(self, name: 'Token'):
+        if name.lexeme in self.fields:
+            return self.fields[name.lexeme]
+        raise OrionRuntimeError(name, f"Undefined property '{name.lexeme}'.")
+
+    def set(self, name: 'Token', value: Any):
+        self.fields[name.lexeme] = value
+
+    def __str__(self):
+        return "<instance>"
+
+
+class OrionComponent(OrionInstance):
     """
     Represents a component declaration's runtime data, primarily its styles.
     """
     def __init__(self, name: str):
+        super().__init__()
         self.name = name
-        self.styles = {}
-        self.state_styles = {}
+        self.fields["styles"] = {}
+        self.fields["state_styles"] = {}
 
     def __str__(self) -> str:
         return f"<component {self.name}>"

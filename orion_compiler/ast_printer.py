@@ -66,6 +66,14 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
             return self._parenthesize("return", stmt.value)
         return "(return)"
 
+    def visit_module_stmt(self, stmt: ast.ModuleStmt) -> str:
+        return f"(module {stmt.name.lexeme})"
+
+    def visit_use_stmt(self, stmt: ast.UseStmt) -> str:
+        if stmt.alias:
+            return f"(use {stmt.name.lexeme} as {stmt.alias.lexeme})"
+        return f"(use {stmt.name.lexeme})"
+
     # --- Component Visitor Methods ---
 
     def visit_component_stmt(self, stmt: ast.ComponentStmt) -> str:
@@ -114,6 +122,12 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_call_expr(self, expr: ast.Call) -> str:
         return self._parenthesize("call", expr.callee, *expr.arguments)
+
+    def visit_get_expr(self, expr: ast.Get) -> str:
+        return self._parenthesize(f". {expr.name.lexeme}", expr.object)
+
+    def visit_set_expr(self, expr: ast.Set) -> str:
+        return self._parenthesize(f"= {expr.name.lexeme}", expr.object, expr.value)
 
     # --- Helper Method ---
 

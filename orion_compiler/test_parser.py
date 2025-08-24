@@ -100,6 +100,15 @@ def main():
     if run_parser_test("Component Parsing", source4, expected4):
         tests_passed += 1
 
+    # Test 5: Property set parsing
+    source5 = "box.width = 100;"
+    expected5 = """
+    (expr_stmt (= width box 100))
+    """
+    total_tests += 1
+    if run_parser_test("Property Set Parsing", source5, expected5):
+        tests_passed += 1
+
 
     print(f"\n--- Parser Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")

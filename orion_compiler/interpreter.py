@@ -4,7 +4,7 @@ import ast_nodes as ast
 from tokens import Token, TokenType
 from errors import OrionRuntimeError, Return
 from environment import Environment
-from callables import OrionFunction, OrionCallable, OrionComponent
+from callables import OrionFunction, OrionCallable, OrionComponent, OrionInstance
 
 class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     """
@@ -13,7 +13,7 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self):
         self.environment = Environment()
 
-    def interpret(self, statements: List[ast.Stmt]):
+    def interpret(self, statements: List[ast.Stmt]) -> Environment:
         """The main entry point for the interpreter."""
         try:
             for statement in statements:
@@ -21,6 +21,8 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
         except OrionRuntimeError as error:
             # In a real compiler, this would be handled by a dedicated error reporter.
             print(f"[Line {error.token.line}] RuntimeError: {error.message}")
+
+        return self.environment
 
     def _execute(self, stmt: ast.Stmt):
         """Helper to execute a single statement."""
@@ -72,21 +74,56 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
 
         raise Return(value)
 
+    def visit_module_stmt(self, stmt: ast.ModuleStmt):
+        # For now, module declarations don't have a runtime behavior.
+        # A static analyzer might use this, or a build system.
+        return None
+
+    def visit_use_stmt(self, stmt: ast.UseStmt):
+        module_name = stmt.name.lexeme
+        # Assume modules are relative to the compiler directory for now.
+        file_path = f"orion_compiler/{module_name}.orion"
+
+        # This import is here to avoid a top-level circular dependency
+        from orion import Orion
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                source = f.read()
+        except FileNotFoundError:
+            raise OrionRuntimeError(stmt.name, f"Module file not found: '{file_path}'")
+
+        # Run the module code in a new, separate execution pipeline
+        module_runner = Orion()
+        module_environment = module_runner.run(source)
+
+        # Create a namespace instance to hold the module's exports
+        namespace = OrionInstance()
+        namespace.fields = module_environment.values
+
+        # Bind the namespace object to a variable in the current environment
+        bind_name = stmt.alias.lexeme if stmt.alias else module_name
+        self.environment.define(bind_name, namespace)
+        return None
+
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
         component = OrionComponent(stmt.name.lexeme)
 
+        # Get the style dictionaries from the instance's fields
+        styles = component.fields["styles"]
+        state_styles = component.fields["state_styles"]
+
         for body_stmt in stmt.body:
-            # The visitors will now return the data they parse.
             result = body_stmt.accept(self)
             if not result: continue
 
             node_type, data = result
             if node_type == "style":
                 prop_name, prop_value = data
-                component.styles[prop_name] = prop_value
+                styles[prop_name] = prop_value
             elif node_type == "state":
                 state_name, styles_dict = data
-                component.state_styles[state_name] = styles_dict
+                state_styles[state_name] = styles_dict
 
         self.environment.define(stmt.name.lexeme, component)
         return None
@@ -236,3 +273,20 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
             raise OrionRuntimeError(expr.paren, f"Expected {callee.arity()} arguments but got {len(arguments)}.")
 
         return callee.call(self, arguments)
+
+    def visit_get_expr(self, expr: ast.Get):
+        obj = self._evaluate(expr.object)
+        if isinstance(obj, OrionInstance):
+            return obj.get(expr.name)
+
+        raise OrionRuntimeError(expr.name, "Only instances have properties.")
+
+    def visit_set_expr(self, expr: ast.Set):
+        obj = self._evaluate(expr.object)
+
+        if not isinstance(obj, OrionInstance):
+            raise OrionRuntimeError(expr.name, "Only instances have fields.")
+
+        value = self._evaluate(expr.value)
+        obj.set(expr.name, value)
+        return value

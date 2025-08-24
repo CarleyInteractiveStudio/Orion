@@ -34,6 +34,10 @@ class Parser:
         If a syntax error is found, it synchronizes and returns None.
         """
         try:
+            if self._match(TokenType.MODULE):
+                return self._module_statement()
+            if self._match(TokenType.USE):
+                return self._use_statement()
             if self._match(TokenType.COMPONENT):
                 return self._component_declaration()
             if self._match(TokenType.FUNCTION):
@@ -119,6 +123,23 @@ class Parser:
         self._consume(TokenType.LEFT_BRACE, f"Expect '{{' before {kind} body.")
         body = self._block()
         return ast.Function(name, parameters, body)
+
+    def _module_statement(self) -> ast.Stmt:
+        """Parses a module declaration."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect module name.")
+        self._consume(TokenType.SEMICOLON, "Expect ';' after module name.")
+        return ast.ModuleStmt(name)
+
+    def _use_statement(self) -> ast.Stmt:
+        """Parses a use/import statement."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect module name to use.")
+
+        alias = None
+        if self._match(TokenType.AS):
+            alias = self._consume(TokenType.IDENTIFIER, "Expect alias name after 'as'.")
+
+        self._consume(TokenType.SEMICOLON, "Expect ';' after use statement.")
+        return ast.UseStmt(name, alias)
 
     def _component_declaration(self) -> ast.Stmt:
         """Parses a component declaration."""
@@ -211,6 +232,8 @@ class Parser:
             if isinstance(expr, ast.Variable):
                 name = expr.name
                 return ast.Assign(name, value)
+            elif isinstance(expr, ast.Get):
+                return ast.Set(expr.object, expr.name, value)
 
             # If the left-hand side isn't a valid assignment target, report an error.
             self._error(equals, "Invalid assignment target.")
@@ -294,12 +317,15 @@ class Parser:
         return ast.Call(callee, paren, arguments)
 
     def _call(self) -> ast.Expr:
-        """Parses a function call expression."""
+        """Parses a function call or property access expression."""
         expr = self._primary()
 
         while True:
             if self._match(TokenType.LEFT_PAREN):
                 expr = self._finish_call(expr)
+            elif self._match(TokenType.DOT):
+                name = self._consume(TokenType.IDENTIFIER, "Expect property name after '.'.")
+                expr = ast.Get(expr, name)
             else:
                 break
 
