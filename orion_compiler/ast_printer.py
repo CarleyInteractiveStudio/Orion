@@ -53,6 +53,19 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
         ]
         return "".join(parts)
 
+    def visit_function_stmt(self, stmt: ast.Function) -> str:
+        param_str = ", ".join(p.lexeme for p in stmt.params)
+        lines = [f"(fun {stmt.name.lexeme}({param_str}) {{"]
+        for statement in stmt.body:
+            lines.append(f"  {statement.accept(self)}")
+        lines.append("})")
+        return "\n".join(lines)
+
+    def visit_return_stmt(self, stmt: ast.Return) -> str:
+        if stmt.value:
+            return self._parenthesize("return", stmt.value)
+        return "(return)"
+
     # --- Expression Visitor Methods ---
 
     def visit_binary_expr(self, expr: ast.Binary) -> str:
@@ -78,6 +91,9 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_logical_expr(self, expr: ast.Logical) -> str:
         return self._parenthesize(expr.operator.lexeme, expr.left, expr.right)
+
+    def visit_call_expr(self, expr: ast.Call) -> str:
+        return self._parenthesize("call", expr.callee, *expr.arguments)
 
     # --- Helper Method ---
 

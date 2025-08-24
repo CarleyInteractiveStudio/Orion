@@ -2,8 +2,9 @@ from typing import List, Any
 
 import ast_nodes as ast
 from tokens import Token, TokenType
-from errors import OrionRuntimeError
+from errors import OrionRuntimeError, Return
 from environment import Environment
+from callables import OrionFunction, OrionCallable
 
 class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     """
@@ -58,6 +59,18 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
         while self._is_truthy(self._evaluate(stmt.condition)):
             self._execute(stmt.body)
         return None
+
+    def visit_function_stmt(self, stmt: ast.Function):
+        function = OrionFunction(stmt, self.environment)
+        self.environment.define(stmt.name.lexeme, function)
+        return None
+
+    def visit_return_stmt(self, stmt: ast.Return):
+        value = None
+        if stmt.value is not None:
+            value = self._evaluate(stmt.value)
+
+        raise Return(value)
 
     def _execute_block(self, statements: List[ast.Stmt], environment: Environment):
         previous = self.environment
@@ -169,3 +182,18 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
                 return left
 
         return self._evaluate(expr.right)
+
+    def visit_call_expr(self, expr: ast.Call):
+        callee = self._evaluate(expr.callee)
+
+        arguments = []
+        for argument in expr.arguments:
+            arguments.append(self._evaluate(argument))
+
+        if not isinstance(callee, OrionCallable):
+            raise OrionRuntimeError(expr.paren, "Can only call functions and classes.")
+
+        if len(arguments) != callee.arity():
+            raise OrionRuntimeError(expr.paren, f"Expected {callee.arity()} arguments but got {len(arguments)}.")
+
+        return callee.call(self, arguments)

@@ -34,6 +34,8 @@ class Parser:
         If a syntax error is found, it synchronizes and returns None.
         """
         try:
+            if self._match(TokenType.FUNCTION):
+                return self._function("function")
             if self._match(TokenType.VAR):
                 return self._var_declaration()
             return self._statement()
@@ -53,9 +55,11 @@ class Parser:
         return ast.Var(name, initializer)
 
     def _statement(self) -> ast.Stmt:
-        """Parses a statement. This includes if, while, expression, and block statements."""
+        """Parses a statement. This includes if, while, return, expression, and block statements."""
         if self._match(TokenType.IF):
             return self._if_statement()
+        if self._match(TokenType.RETURN):
+            return self._return_statement()
         if self._match(TokenType.WHILE):
             return self._while_statement()
         if self._match(TokenType.LEFT_BRACE):
@@ -83,6 +87,36 @@ class Parser:
         body = self._statement()
 
         return ast.While(condition, body)
+
+    def _return_statement(self) -> ast.Stmt:
+        """Parses a return statement."""
+        keyword = self._previous()
+        value = None
+        if not self._check(TokenType.SEMICOLON):
+            value = self._expression()
+
+        self._consume(TokenType.SEMICOLON, "Expect ';' after return value.")
+        return ast.Return(keyword, value)
+
+    def _function(self, kind: str) -> ast.Function:
+        """Parses a function declaration."""
+        name = self._consume(TokenType.IDENTIFIER, f"Expect {kind} name.")
+        self._consume(TokenType.LEFT_PAREN, f"Expect '(' after {kind} name.")
+
+        parameters: List[Token] = []
+        if not self._check(TokenType.RIGHT_PAREN):
+            while True:
+                if len(parameters) >= 255:
+                    self._error(self._peek(), "Can't have more than 255 parameters.")
+                parameters.append(self._consume(TokenType.IDENTIFIER, "Expect parameter name."))
+                if not self._match(TokenType.COMMA):
+                    break
+
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.")
+
+        self._consume(TokenType.LEFT_BRACE, f"Expect '{{' before {kind} body.")
+        body = self._block()
+        return ast.Function(name, parameters, body)
 
     def _block(self) -> List[ast.Stmt]:
         """Parses a block of statements."""
@@ -182,7 +216,33 @@ class Parser:
             operator = self._previous()
             right = self._unary()
             return ast.Unary(operator, right)
-        return self._primary()
+        return self._call()
+
+    def _finish_call(self, callee: ast.Expr) -> ast.Expr:
+        """Helper to parse the argument list of a function call."""
+        arguments: List[ast.Expr] = []
+        if not self._check(TokenType.RIGHT_PAREN):
+            while True:
+                if len(arguments) >= 255:
+                    self._error(self._peek(), "Can't have more than 255 arguments.")
+                arguments.append(self._expression())
+                if not self._match(TokenType.COMMA):
+                    break
+
+        paren = self._consume(TokenType.RIGHT_PAREN, "Expect ')' after arguments.")
+        return ast.Call(callee, paren, arguments)
+
+    def _call(self) -> ast.Expr:
+        """Parses a function call expression."""
+        expr = self._primary()
+
+        while True:
+            if self._match(TokenType.LEFT_PAREN):
+                expr = self._finish_call(expr)
+            else:
+                break
+
+        return expr
 
     def _primary(self) -> ast.Expr:
         """Parses primary expressions (literals, grouping, identifiers)."""

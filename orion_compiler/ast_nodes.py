@@ -36,6 +36,10 @@ class ExprVisitor(ABC):
     def visit_logical_expr(self, expr: 'Logical'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_call_expr(self, expr: 'Call'):
+        raise NotImplementedError
+
 
 class StmtVisitor(ABC):
     @abstractmethod
@@ -56,6 +60,14 @@ class StmtVisitor(ABC):
 
     @abstractmethod
     def visit_while_stmt(self, stmt: 'While'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_function_stmt(self, stmt: 'Function'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_return_stmt(self, stmt: 'Return'):
         raise NotImplementedError
 
 
@@ -137,6 +149,16 @@ class Logical(Expr):
         return visitor.visit_logical_expr(self)
 
 
+@dataclass
+class Call(Expr):
+    callee: Expr
+    paren: Token  # The closing parenthesis, for error reporting location
+    arguments: List[Expr]
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_call_expr(self)
+
+
 # --- Concrete Statement Nodes ---
 
 @dataclass
@@ -181,3 +203,22 @@ class While(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_while_stmt(self)
+
+
+@dataclass
+class Function(Stmt):
+    name: Token
+    params: List[Token]
+    body: List[Stmt]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_function_stmt(self)
+
+
+@dataclass
+class Return(Stmt):
+    keyword: Token
+    value: Optional[Expr]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_return_stmt(self)

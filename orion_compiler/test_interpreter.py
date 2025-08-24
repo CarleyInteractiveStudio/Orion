@@ -134,6 +134,25 @@ def main():
     if run_interpreter_test("Logical Operators Short-circuiting", source7, expected7):
         tests_passed += 1
 
+    # Test 8: Functions (declaration, call, args, return, recursion)
+    source8 = """
+    var result = 0;
+
+    function fib(n) {
+        if (n <= 1) {
+            return n;
+        }
+        return fib(n - 2) + fib(n - 1);
+    }
+
+    result = fib(8);
+    """
+    # fib(8) = 21
+    expected8 = {"result": 21.0}
+    total_tests += 1
+    if run_interpreter_test("Functions and Recursion (Fibonacci)", source8, expected8):
+        tests_passed += 1
+
     print(f"\n--- Interpreter Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 
