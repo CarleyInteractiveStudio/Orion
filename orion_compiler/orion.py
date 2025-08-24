@@ -1,7 +1,7 @@
 from lexer import Lexer
 from parser import Parser
-from interpreter import Interpreter
-from resolver import Resolver
+from compiler import Compiler
+from vm import VM, InterpretResult
 
 class Orion:
     """
@@ -9,34 +9,34 @@ class Orion:
     This class ties together the different phases.
     """
     def __init__(self):
-        # In the future, we could have flags for different modes (e.g., REPL, file).
+        self.vm = VM()
         self.had_error = False
         self.had_runtime_error = False
 
     def run(self, source: str):
-        """Runs a piece of Orion source code."""
+        """Runs a piece of Orion source code using the new Compiler -> VM pipeline."""
         lexer = Lexer(source)
         tokens = lexer.scan_tokens()
 
         parser = Parser(tokens)
         statements = parser.parse()
 
-        # If the parser had an error, stop.
-        # A better system would be needed for a real compiler.
-        if not statements and len(tokens) > 1: # Heuristic for now
-            return None
+        # In a real compiler, we would check for parser errors here and stop.
 
-        interpreter = Interpreter()
+        compiler = Compiler()
+        chunk = compiler.compile(statements)
 
-        resolver = Resolver()
-        resolver.resolve(statements)
+        if chunk is None:
+            # Compile error
+            self.had_error = True
+            return None # Indicate failure
 
-        # If the resolver had an error, stop.
-        if resolver.had_error:
-            return None
+        # The VM now runs the show. It returns a result code.
+        result = self.vm.interpret(chunk)
 
-        final_environment = interpreter.interpret(statements)
-        return final_environment
+        # We can handle results here if needed.
+        # For now, we don't return anything meaningful like the old environment.
+        return result
 
     def run_file(self, path: str):
         """Runs an Orion script from a file."""
