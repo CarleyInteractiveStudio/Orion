@@ -44,8 +44,9 @@ class OpCode(IntEnum):
     OP_JUMP = 20
     OP_LOOP = 21
 
-    # --- End of Execution ---
-    OP_RETURN = 22      # Returns from the current function (and ends the script).
+    # --- Functions ---
+    OP_CALL = 22
+    OP_RETURN = 23      # Returns from the current function (and ends the script).
 
 
 class Chunk:

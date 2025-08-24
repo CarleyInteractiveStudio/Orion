@@ -2,7 +2,7 @@ import sys
 
 from lexer import Lexer
 from parser import Parser
-from compiler import Compiler
+from compiler import compile as compile_source
 from vm import VM, InterpretResult
 
 def run_vm_test(name, source_code, expected_value):
@@ -16,21 +16,18 @@ def run_vm_test(name, source_code, expected_value):
     parser = Parser(tokens)
     statements = parser.parse()
 
-    # The compiler doesn't handle all statements yet, so this might be empty
-    if not statements:
-        # A simple expression is wrapped in an Expression statement
+    if not statements and len(tokens) > 1:
         print(f"FAIL: {name} - Parser produced no statements.")
         return False
 
-    compiler = Compiler()
-    chunk = compiler.compile(statements)
+    main_function = compile_source(statements)
 
-    if chunk is None:
-        print(f"FAIL: {name} - Compiler returned no chunk.")
+    if main_function is None:
+        print(f"FAIL: {name} - Compiler returned None.")
         return False
 
     vm = VM()
-    result, final_value = vm.interpret(chunk)
+    result, final_value = vm.interpret(main_function)
 
     if result != InterpretResult.OK:
         print(f"FAIL: {name} - VM did not return OK.")
@@ -46,80 +43,22 @@ def run_vm_test(name, source_code, expected_value):
         return False
 
 def main():
+    tests = [
+        ("Simple Arithmetic", "return (5 - 2) * (3 + 1);", 12.0),
+        ("Complex Arithmetic", "return -(10 / 2) + 1;", -4.0),
+        ("Global Variables", "var a = 10; var b = a + 5; a = 20; return a + b;", 35.0),
+        ("Local Variables and Scopes", 'var a = "global a"; var b = "global b"; { var a = "inner a"; b = a; } return a + b;', "global ainner a"),
+        ("If-Else Statement", "var x = 10; if (x > 5) { x = 20; } else { x = 0; } return x;", 20.0),
+        ("While Loop", "var i = 0; var total = 0; while (i < 5) { total = total + i; i = i + 1; } return total;", 10.0),
+        ("Functions (Fibonacci)", "function fib(n) { if (n < 2) { return n; } return fib(n - 2) + fib(n - 1); } return fib(8);", 21.0)
+    ]
+
     tests_passed = 0
-    total_tests = 0
+    for name, source, expected in tests:
+        if run_vm_test(name, source, expected):
+            tests_passed += 1
 
-    # Test 1: Simple arithmetic
-    source1 = "return (5 - 2) * (3 + 1);"
-    expected1 = 12.0
-    total_tests += 1
-    if run_vm_test("Simple Arithmetic", source1, expected1):
-        tests_passed += 1
-
-    # Test 2: More complex arithmetic with different operators
-    source2 = "return -(10 / 2) + 1;"
-    expected2 = -4.0
-    total_tests += 1
-    if run_vm_test("Complex Arithmetic", source2, expected2):
-        tests_passed += 1
-
-    # Test 3: Global Variables
-    source3 = """
-    var a = 10;
-    var b = a + 5; // b is 15
-    a = 20;
-    return a + b; // 20 + 15 = 35
-    """
-    expected3 = 35.0
-    total_tests += 1
-    if run_vm_test("Global Variables", source3, expected3):
-        tests_passed += 1
-
-    # Test 4: Local Variables and Scoping
-    source4 = """
-    var a = "global a";
-    var b = "global b";
-    {
-        var a = "inner a";
-        b = a;
-    }
-    return a + b;
-    """
-    expected4 = "global a" + "inner a"
-    total_tests += 1
-    if run_vm_test("Local Variables and Scopes", source4, expected4):
-        tests_passed += 1
-
-    # Test 5: If-Else statement
-    source5 = """
-    var x = 10;
-    if (x > 5) {
-        x = 20;
-    } else {
-        x = 0;
-    }
-    return x;
-    """
-    expected5 = 20.0
-    total_tests += 1
-    if run_vm_test("If-Else Statement", source5, expected5):
-        tests_passed += 1
-
-    # Test 6: While loop
-    source6 = """
-    var i = 0;
-    var total = 0;
-    while (i < 5) {
-        total = total + i;
-        i = i + 1;
-    }
-    return total;
-    """
-    expected6 = 10.0 # 0+1+2+3+4
-    total_tests += 1
-    if run_vm_test("While Loop", source6, expected6):
-        tests_passed += 1
-
+    total_tests = len(tests)
     print(f"\n--- VM Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

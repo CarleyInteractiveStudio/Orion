@@ -1,6 +1,6 @@
 from lexer import Lexer
 from parser import Parser
-from compiler import Compiler
+from compiler import compile as compile_source
 from vm import VM, InterpretResult
 
 class Orion:
@@ -23,20 +23,15 @@ class Orion:
 
         # In a real compiler, we would check for parser errors here and stop.
 
-        compiler = Compiler()
-        chunk = compiler.compile(statements)
+        main_function = compile_source(statements)
 
-        if chunk is None:
-            # Compile error
+        if main_function is None:
             self.had_error = True
-            return None # Indicate failure
+            return None
 
-        # The VM now runs the show. It returns a result code.
-        result = self.vm.interpret(chunk)
+        result, last_value = self.vm.interpret(main_function)
 
-        # We can handle results here if needed.
-        # For now, we don't return anything meaningful like the old environment.
-        return result
+        return result, last_value
 
     def run_file(self, path: str):
         """Runs an Orion script from a file."""
