@@ -79,11 +79,16 @@ def main():
         ("Subscript non-subscriptable", "var x: number = 1; return x[0];", "is not subscriptable"),
         ("Subscript with non-number", "var l = [1]; return l['a'];", "List index must be a number"),
         ("Undeclared variable", "return x + 1;", "Undeclared variable 'x'"),
-        # New Generic Type Tests
+        # Generic List Tests
         ("Wrong type in list literal", "var l: list[number] = [1, 'a'];", "of type list[any] cannot be assigned to variable of type list[number]"),
         ("Set list element with wrong type", "var l: list[number] = [1]; l[0] = 'a';", "of type string to a list of type list[number]"),
         ("Assign list element to wrong type", "var l: list[number] = [1]; var s: string = l[0];", "of type number cannot be assigned to variable of type string"),
         ("Assigning list[any] to list[number]", "var l: list[any] = [1]; var n: list[number] = l;", "of type list[any] cannot be assigned to variable of type list[number]"),
+        # Generic Dict Tests
+        ("Wrong value type in dict literal", 'var d: dict[string, number] = {"a": "b"};', "of type dict[string, string] cannot be assigned to variable of type dict[string, number]"),
+        ("Set dict element with wrong value type", 'var d: dict[string, number] = {}; d["a"] = "b";', "of type string to a dict of type dict[string, number]"),
+        ("Set dict element with wrong key type", 'var d: dict[string, number] = {}; d[1] = 1;', "Key of type number cannot be used to index a dict with key type string"),
+        ("Assign dict element to wrong type", 'var d: dict[string, number] = {"a": 1}; var s: string = d["a"];', "of type number cannot be assigned to variable of type string"),
     ]
 
     valid_tests = [
@@ -98,11 +103,16 @@ def main():
         ("Dict creation", 'var d = {"a": 1, "b": "two"};'),
         ("Valid get dict subscript", 'var d = {"a": 1}; var x = d["a"];'),
         ("Valid set dict subscript", 'var d = {"a": 1}; d["a"] = 2;'),
-        # New Generic Type Tests
+        # Generic List Tests
         ("Declare generic list", "var l: list[number];"),
         ("Assign correctly typed list", "var l: list[number] = [1, 2];"),
         ("Assign list[number] to list[any]", "var l: list[any] = [1, 2];"),
         ("Get element from typed list", "var l: list[string] = ['a']; var s: string = l[0];"),
+        # Generic Dict Tests
+        ("Declare generic dict", "var d: dict[string, number];"),
+        ("Assign correctly typed dict", 'var d: dict[string, number] = {"a": 1};'),
+        ("Get element from typed dict", 'var d: dict[string, number] = {"a": 1}; var n: number = d["a"];'),
+        ("Set element in typed dict", 'var d: dict[string, number] = {}; d["a"] = 1;'),
     ]
 
     tests_passed = 0

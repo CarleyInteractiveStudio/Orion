@@ -161,23 +161,26 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if isinstance(type_expr, ast.Variable):
             return self.type_map.get(type_expr.name.lexeme, ANY)
         if isinstance(type_expr, ast.GenericType):
-            base_type = self._resolve_type_expr(type_expr.base_type)
-            if not isinstance(base_type, ListType) and not isinstance(base_type, DictType):
-                 # This should use a token from the expression
-                print(f"Type Error: Type {base_type} is not generic.")
-                self.had_error = True
-                return ANY
+            base_type_name = type_expr.base_type.name.lexeme
 
             params = [self._resolve_type_expr(p) for p in type_expr.type_parameters]
-            if isinstance(base_type, ListType):
+
+            if base_type_name == "list":
                 if len(params) != 1:
-                    print("Type Error: List type expects 1 type parameter.")
+                    print("Type Error: List type expects 1 type parameter.") # TODO: Better error reporting
                     self.had_error = True
-                    return ANY
+                    return ANY_LIST
                 return ListType(params[0])
-            if isinstance(base_type, DictType):
-                # Dicts not fully supported yet
-                return ANY_DICT
+            elif base_type_name == "dict":
+                if len(params) != 2:
+                    print("Type Error: Dict type expects 2 type parameters (key, value).")
+                    self.had_error = True
+                    return ANY_DICT
+                return DictType(params[0], params[1])
+            else:
+                print(f"Type Error: Type '{base_type_name}' is not generic.")
+                self.had_error = True
+                return ANY
         return ANY
 
     def _get_var_type(self, name: Token) -> Type:
@@ -192,14 +195,21 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
 
     def _is_assignable(self, target: Type, value: Type) -> bool:
         if target == value: return True
-        # Anything can be assigned to a variable of type 'any'
         if target == ANY: return True
-        # A value of type 'any' cannot be assigned to a more specific type
         if value == ANY: return False
 
-        # Covariance for lists: list[number] is a subtype of list[any]
         if isinstance(target, ListType) and isinstance(value, ListType):
             return self._is_assignable(target.element_type, value.element_type)
+
+        # Dictionaries are invariant, with the exception that an empty dict
+        # (inferred as dict[any, any]) can be assigned to any dict type.
+        if isinstance(target, DictType) and isinstance(value, DictType):
+            if value.key_type == ANY and value.value_type == ANY:
+                return True # This is the empty dictionary case.
+
+            key_match = self._is_assignable(target.key_type, value.key_type)
+            value_match = self._is_assignable(target.value_type, value.value_type)
+            return key_match and value_match
 
         return False
 
@@ -248,25 +258,38 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             return ListType(ANY)
 
     def visit_dict_literal_expr(self, expr: ast.DictLiteral) -> Type:
-        for i in range(len(expr.keys)):
-            key_type = self._analyze_expr(expr.keys[i])
+        if not expr.keys:
+            return DictType(ANY, ANY)
+
+        key_types = [self._analyze_expr(k) for k in expr.keys]
+        value_types = [self._analyze_expr(v) for v in expr.values]
+
+        # Check that all keys are strings for now
+        for key_type in key_types:
             if key_type not in (STRING, ANY):
-                print(f"Type Error: Dictionary keys must be strings.")
+                # This needs a token to be more useful
+                print("Type Error: Dictionary keys must be strings.")
                 self.had_error = True
-            self._analyze_expr(expr.values[i])
-        return ANY_DICT
+
+        # Infer common value type
+        first_value_type = value_types[0]
+        if all(t == first_value_type for t in value_types):
+            return DictType(STRING, first_value_type)
+        else:
+            return DictType(STRING, ANY)
 
     def visit_get_subscript_expr(self, expr: ast.GetSubscript) -> Type:
         object_type = self._analyze_expr(expr.object)
         index_type = self._analyze_expr(expr.index)
+
         if isinstance(object_type, ListType):
-            if index_type not in (NUMBER, ANY):
+            if not self._is_assignable(NUMBER, index_type):
                 type_error(expr.bracket, f"List index must be a number, not type {index_type}.")
                 self.had_error = True
             return object_type.element_type
         elif isinstance(object_type, DictType):
-            if index_type not in (STRING, ANY):
-                type_error(expr.bracket, f"Dictionary key must be a string, not type {index_type}.")
+            if not self._is_assignable(object_type.key_type, index_type):
+                type_error(expr.bracket, f"Key of type {index_type} cannot be used to index a dict with key type {object_type.key_type}.")
                 self.had_error = True
             return object_type.value_type
         elif object_type != ANY:
@@ -280,15 +303,15 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         value_type = self._analyze_expr(expr.value)
 
         if isinstance(object_type, ListType):
-            if index_type not in (NUMBER, ANY):
+            if not self._is_assignable(NUMBER, index_type):
                 type_error(expr.bracket, f"List index must be a number, not type {index_type}.")
                 self.had_error = True
             if not self._is_assignable(object_type.element_type, value_type):
                 type_error(expr.bracket, f"Cannot assign value of type {value_type} to a list of type {object_type}.")
                 self.had_error = True
         elif isinstance(object_type, DictType):
-            if index_type not in (STRING, ANY):
-                type_error(expr.bracket, f"Dictionary key must be a string, not type {index_type}.")
+            if not self._is_assignable(object_type.key_type, index_type):
+                type_error(expr.bracket, f"Key of type {index_type} cannot be used to index a dict with key type {object_type.key_type}.")
                 self.had_error = True
             if not self._is_assignable(object_type.value_type, value_type):
                 type_error(expr.bracket, f"Cannot assign value of type {value_type} to a dict of type {object_type}.")
