@@ -99,14 +99,25 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     # --- Other visitor methods will be added later ---
     # ...
     # For now, I will add placeholders to avoid abstract class errors.
-    def visit_variable_expr(self, expr: ast.Variable): pass
-    def visit_assign_expr(self, expr: ast.Assign): pass
+    def visit_variable_expr(self, expr: ast.Variable):
+        self._emit_bytes(OpCode.OP_GET_GLOBAL, self._make_constant(expr.name.lexeme))
+
+    def visit_assign_expr(self, expr: ast.Assign):
+        self._compile_expr(expr.value)
+        self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(expr.name.lexeme))
+
     def visit_logical_expr(self, expr: ast.Logical): pass
     def visit_call_expr(self, expr: ast.Call): pass
     def visit_get_expr(self, expr: ast.Get): pass
     def visit_set_expr(self, expr: ast.Set): pass
     def visit_this_expr(self, expr: ast.This): pass
-    def visit_var_stmt(self, stmt: ast.Var): pass
+    def visit_var_stmt(self, stmt: ast.Var):
+        if stmt.initializer:
+            self._compile_expr(stmt.initializer)
+        else:
+            self._emit_byte(OpCode.OP_NIL) # Default value
+
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
     def visit_block_stmt(self, stmt: ast.Block): pass
     def visit_if_stmt(self, stmt: ast.If): pass
     def visit_while_stmt(self, stmt: ast.While): pass

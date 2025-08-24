@@ -32,8 +32,13 @@ class OpCode(IntEnum):
     OP_GREATER = 12
     OP_LESS = 13
 
+    # --- Variables ---
+    OP_DEFINE_GLOBAL = 14
+    OP_GET_GLOBAL = 15
+    OP_SET_GLOBAL = 16
+
     # --- End of Execution ---
-    OP_RETURN = 14      # Returns from the current function (and ends the script).
+    OP_RETURN = 17      # Returns from the current function (and ends the script).
 
 
 class Chunk:

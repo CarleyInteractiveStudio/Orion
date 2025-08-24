@@ -63,6 +63,18 @@ def main():
     if run_vm_test("Complex Arithmetic", source2, expected2):
         tests_passed += 1
 
+    # Test 3: Global Variables
+    source3 = """
+    var a = 10;
+    var b = a + 5; // b is 15
+    a = 20;
+    return a + b; // 20 + 15 = 35
+    """
+    expected3 = 35.0
+    total_tests += 1
+    if run_vm_test("Global Variables", source3, expected3):
+        tests_passed += 1
+
     print(f"\n--- VM Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

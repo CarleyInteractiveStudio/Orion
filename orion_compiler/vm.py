@@ -15,6 +15,7 @@ class VM:
         self.chunk: Chunk = None
         self.ip: int = 0 # Instruction Pointer
         self.stack: list = []
+        self.globals: dict = {}
 
     def interpret(self, chunk: Chunk) -> InterpretResult:
         self.chunk = chunk
@@ -65,6 +66,26 @@ class VM:
             elif instruction == OpCode.OP_POP:
                 self.pop()
 
+            elif instruction == OpCode.OP_DEFINE_GLOBAL:
+                name = self._read_constant(self._read_byte())
+                self.globals[name] = self.peek(0)
+                self.pop()
+
+            elif instruction == OpCode.OP_GET_GLOBAL:
+                name = self._read_constant(self._read_byte())
+                if name not in self.globals:
+                    # A real VM would have a better error reporting system
+                    print(f"RuntimeError: Undefined variable '{name}'.")
+                    return InterpretResult.RUNTIME_ERROR
+                self.push(self.globals[name])
+
+            elif instruction == OpCode.OP_SET_GLOBAL:
+                name = self._read_constant(self._read_byte())
+                if name not in self.globals:
+                    print(f"RuntimeError: Undefined variable '{name}'.")
+                    return InterpretResult.RUNTIME_ERROR
+                self.globals[name] = self.peek(0)
+
     # --- Helper Methods ---
 
     def _read_byte(self) -> int:
@@ -80,6 +101,9 @@ class VM:
 
     def pop(self):
         return self.stack.pop()
+
+    def peek(self, distance: int):
+        return self.stack[-1 - distance]
 
     def _binary_op(self, op_func):
         # A real VM would have runtime type checks here.
