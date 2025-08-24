@@ -144,8 +144,39 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         for statement in stmt.statements:
             self._compile_stmt(statement)
         self._end_scope()
-    def visit_if_stmt(self, stmt: ast.If): pass
-    def visit_while_stmt(self, stmt: ast.While): pass
+    def visit_if_stmt(self, stmt: ast.If):
+        self._compile_expr(stmt.condition)
+
+        # Emit a jump to skip the 'then' branch if the condition is false.
+        then_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE)
+
+        self._emit_byte(OpCode.OP_POP) # Pop condition value
+        self._compile_stmt(stmt.then_branch)
+
+        # Emit a jump to skip the 'else' branch if the 'then' branch was taken.
+        else_jump = self._emit_jump(OpCode.OP_JUMP)
+
+        self._patch_jump(then_jump)
+        self._emit_byte(OpCode.OP_POP) # Pop condition value
+
+        if stmt.else_branch:
+            self._compile_stmt(stmt.else_branch)
+
+        self._patch_jump(else_jump)
+    def visit_while_stmt(self, stmt: ast.While):
+        loop_start = len(self._current_chunk().code)
+
+        self._compile_expr(stmt.condition)
+
+        exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE)
+
+        self._emit_byte(OpCode.OP_POP) # Pop condition
+        self._compile_stmt(stmt.body)
+        self._emit_loop(loop_start)
+
+        self._patch_jump(exit_jump)
+        self._emit_byte(OpCode.OP_POP) # Pop condition to exit loop
+
     def visit_function_stmt(self, stmt: ast.Function): pass
     def visit_return_stmt(self, stmt: ast.Return):
         if stmt.value:
@@ -177,6 +208,38 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def _add_local(self, name: Token):
         # A real compiler would check for redeclaration here.
         self.locals.append(Local(name, self.scope_depth))
+
+    def _emit_jump(self, instruction: OpCode) -> int:
+        """Emits a jump instruction with a placeholder offset and returns its location."""
+        self._emit_byte(instruction)
+        # Emit two bytes for the placeholder offset
+        self._emit_byte(0xff)
+        self._emit_byte(0xff)
+        return len(self._current_chunk().code) - 2
+
+    def _emit_loop(self, loop_start: int):
+        self._emit_byte(OpCode.OP_LOOP)
+
+        offset = len(self._current_chunk().code) - loop_start + 2
+        if offset > 0xffff:
+            self.had_error = True
+            print("Loop body too large.")
+
+        self._emit_byte((offset >> 8) & 0xff)
+        self._emit_byte(offset & 0xff)
+
+    def _patch_jump(self, offset: int):
+        """Goes back and fills in the correct jump offset."""
+        # -2 to account for the size of the jump offset itself.
+        jump = len(self._current_chunk().code) - offset - 2
+
+        if jump > 0xffff: # 16-bit offset
+            self.had_error = True
+            print("Too much code to jump over.")
+
+        # Write the 16-bit jump offset
+        self._current_chunk().code[offset] = (jump >> 8) & 0xff
+        self._current_chunk().code[offset + 1] = jump & 0xff
 
     def _resolve_local(self, name: Token) -> int:
         """

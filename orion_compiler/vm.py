@@ -94,12 +94,32 @@ class VM:
                 slot = self._read_byte()
                 self.stack[slot] = self.peek(0)
 
+            elif instruction == OpCode.OP_JUMP:
+                offset = self._read_short()
+                self.ip += offset
+
+            elif instruction == OpCode.OP_JUMP_IF_FALSE:
+                offset = self._read_short()
+                if self._is_falsey(self.peek(0)):
+                    self.ip += offset
+
+            elif instruction == OpCode.OP_LOOP:
+                offset = self._read_short()
+                self.ip -= offset
+
     # --- Helper Methods ---
+
+    def _is_falsey(self, value) -> bool:
+        return value is None or (isinstance(value, bool) and not value)
 
     def _read_byte(self) -> int:
         byte = self.chunk.code[self.ip]
         self.ip += 1
         return byte
+
+    def _read_short(self) -> int:
+        self.ip += 2
+        return (self.chunk.code[self.ip - 2] << 8) | self.chunk.code[self.ip - 1]
 
     def _read_constant(self, index: int):
         return self.chunk.constants[index]

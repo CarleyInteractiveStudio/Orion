@@ -90,6 +90,36 @@ def main():
     if run_vm_test("Local Variables and Scopes", source4, expected4):
         tests_passed += 1
 
+    # Test 5: If-Else statement
+    source5 = """
+    var x = 10;
+    if (x > 5) {
+        x = 20;
+    } else {
+        x = 0;
+    }
+    return x;
+    """
+    expected5 = 20.0
+    total_tests += 1
+    if run_vm_test("If-Else Statement", source5, expected5):
+        tests_passed += 1
+
+    # Test 6: While loop
+    source6 = """
+    var i = 0;
+    var total = 0;
+    while (i < 5) {
+        total = total + i;
+        i = i + 1;
+    }
+    return total;
+    """
+    expected6 = 10.0 # 0+1+2+3+4
+    total_tests += 1
+    if run_vm_test("While Loop", source6, expected6):
+        tests_passed += 1
+
     print(f"\n--- VM Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

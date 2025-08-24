@@ -39,8 +39,13 @@ class OpCode(IntEnum):
     OP_GET_LOCAL = 17
     OP_SET_LOCAL = 18
 
+    # --- Jumps ---
+    OP_JUMP_IF_FALSE = 19
+    OP_JUMP = 20
+    OP_LOOP = 21
+
     # --- End of Execution ---
-    OP_RETURN = 19      # Returns from the current function (and ends the script).
+    OP_RETURN = 22      # Returns from the current function (and ends the script).
 
 
 class Chunk:
