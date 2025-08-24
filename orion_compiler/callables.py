@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Any, TYPE_CHECKING
+from collections.abc import Callable
 
 import ast_nodes as ast
 from environment import Environment
@@ -112,3 +113,21 @@ class OrionComponent(OrionInstance, OrionCallable):
 
     def __str__(self) -> str:
         return f"<component {self.name}>"
+
+
+class OrionNativeFunction(OrionCallable):
+    """
+    A wrapper to make a Python callable conform to the OrionCallable interface.
+    """
+    def __init__(self, arity: int, func: Callable):
+        self._arity = arity
+        self._func = func
+
+    def arity(self) -> int:
+        return self._arity
+
+    def call(self, interpreter: 'Interpreter', arguments: List[Any]) -> Any:
+        return self._func(*arguments)
+
+    def __str__(self) -> str:
+        return "<native fn>"

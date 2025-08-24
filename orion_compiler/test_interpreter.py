@@ -1,4 +1,6 @@
 import sys
+import io
+from contextlib import redirect_stdout
 
 from lexer import Lexer
 from parser import Parser
@@ -195,6 +197,30 @@ def main():
     total_tests += 1
     if run_interpreter_test("Component Instantiation and 'this'", source11, expected11):
         tests_passed += 1
+
+    # Test 12: Native Functions (print and clock)
+    source12 = 'print("hello", 123);'
+    # This test requires a different helper to check stdout
+    print(f"\n--- Running Interpreter Test: Native Print ---")
+    total_tests += 1
+    f = io.StringIO()
+    with redirect_stdout(f):
+        # We don't need the full test helper, just a quick run
+        lexer = Lexer(source12)
+        tokens = lexer.scan_tokens()
+        parser = Parser(tokens)
+        statements = parser.parse()
+        interpreter = Interpreter()
+        interpreter.interpret(statements)
+    output = f.getvalue()
+    if "hello 123\n" in output:
+        print("PASS: Native Print")
+        tests_passed += 1
+    else:
+        print(f"FAIL: Native Print")
+        print(f"Expected output containing: 'hello 123\\n'")
+        print(f"Got: '{output}'")
+
 
     print(f"\n--- Interpreter Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")

@@ -3,8 +3,9 @@ from typing import List, Any
 import ast_nodes as ast
 from tokens import Token, TokenType
 from errors import OrionRuntimeError, Return
+import time
 from environment import Environment
-from callables import OrionFunction, OrionCallable, OrionComponent, OrionInstance
+from callables import OrionFunction, OrionCallable, OrionComponent, OrionInstance, OrionNativeFunction
 
 class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     """
@@ -12,6 +13,14 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     """
     def __init__(self):
         self.environment = Environment()
+
+        # Define native functions
+        self.environment.define("clock", OrionNativeFunction(0, lambda: time.time()))
+
+        def native_print(*args):
+            print(*args)
+            return None
+        self.environment.define("print", OrionNativeFunction(None, native_print)) # Arity None for variadic
 
     def interpret(self, statements: List[ast.Stmt]) -> Environment:
         """The main entry point for the interpreter."""
@@ -269,7 +278,8 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
         if not isinstance(callee, OrionCallable):
             raise OrionRuntimeError(expr.paren, "Can only call functions and classes.")
 
-        if len(arguments) != callee.arity():
+        # Allow variadic functions if arity is None
+        if callee.arity() is not None and len(arguments) != callee.arity():
             raise OrionRuntimeError(expr.paren, f"Expected {callee.arity()} arguments but got {len(arguments)}.")
 
         return callee.call(self, arguments)
