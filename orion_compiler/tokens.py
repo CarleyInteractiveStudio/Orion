@@ -62,10 +62,6 @@ class TokenType(Enum):
     VOID = auto()
     WHILE = auto()
 
-    # Style-specific keywords from example
-    HOVER = auto()
-    ACTIVE = auto()
-
     # End of file
     EOF = auto()
 
@@ -110,6 +106,4 @@ keywords = {
     "var": TokenType.VAR,
     "void": TokenType.VOID,
     "while": TokenType.WHILE,
-    "hover": TokenType.HOVER,
-    "active": TokenType.ACTIVE,
 }

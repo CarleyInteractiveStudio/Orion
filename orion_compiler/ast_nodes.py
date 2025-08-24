@@ -70,6 +70,18 @@ class StmtVisitor(ABC):
     def visit_return_stmt(self, stmt: 'Return'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_component_stmt(self, stmt: 'ComponentStmt'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_style_prop_stmt(self, stmt: 'StyleProp'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_state_block_stmt(self, stmt: 'StateBlock'):
+        raise NotImplementedError
+
 
 # --- Abstract Base Classes for AST Nodes ---
 
@@ -222,3 +234,32 @@ class Return(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_return_stmt(self)
+
+
+# --- Component-related Statement Nodes ---
+
+@dataclass
+class StyleProp(Stmt):
+    name: Token
+    values: List[Token]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_style_prop_stmt(self)
+
+
+@dataclass
+class StateBlock(Stmt):
+    name: Token
+    body: List[StyleProp] # For now, only style props are allowed inside
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_state_block_stmt(self)
+
+
+@dataclass
+class ComponentStmt(Stmt):
+    name: Token
+    body: List[Stmt] # Can contain StyleProp or StateBlock nodes
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_component_stmt(self)

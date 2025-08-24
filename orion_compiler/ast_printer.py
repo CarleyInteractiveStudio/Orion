@@ -66,6 +66,26 @@ class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
             return self._parenthesize("return", stmt.value)
         return "(return)"
 
+    # --- Component Visitor Methods ---
+
+    def visit_component_stmt(self, stmt: ast.ComponentStmt) -> str:
+        lines = [f"(component {stmt.name.lexeme} {{"]
+        for s in stmt.body:
+            lines.append(f"  {s.accept(self)}")
+        lines.append("})")
+        return "\n".join(lines)
+
+    def visit_state_block_stmt(self, stmt: ast.StateBlock) -> str:
+        lines = [f"  (state {stmt.name.lexeme} {{"]
+        for s in stmt.body:
+            lines.append(f"    {s.accept(self)}")
+        lines.append("  })")
+        return "\n".join(lines)
+
+    def visit_style_prop_stmt(self, stmt: ast.StyleProp) -> str:
+        value_str = " ".join(t.lexeme for t in stmt.values)
+        return f"(style {stmt.name.lexeme}: {value_str})"
+
     # --- Expression Visitor Methods ---
 
     def visit_binary_expr(self, expr: ast.Binary) -> str:

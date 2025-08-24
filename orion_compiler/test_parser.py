@@ -76,6 +76,31 @@ def main():
     if run_parser_test("Declaration without Initializer", source3, expected3):
         tests_passed += 1
 
+    # Test 4: Component parsing
+    source4 = """
+    component AlertBox {
+        background: #ff3300;
+        font: "Orbitron", 14;
+
+        hover {
+            background: #ff6600;
+        }
+    }
+    """
+    expected4 = """
+(component AlertBox {
+  (style background: # ff3300)
+  (style font: "Orbitron" 14)
+  (state hover {
+    (style background: # ff6600)
+  })
+})
+    """
+    total_tests += 1
+    if run_parser_test("Component Parsing", source4, expected4):
+        tests_passed += 1
+
+
     print(f"\n--- Parser Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")
 

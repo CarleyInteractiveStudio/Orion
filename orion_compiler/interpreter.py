@@ -4,7 +4,7 @@ import ast_nodes as ast
 from tokens import Token, TokenType
 from errors import OrionRuntimeError, Return
 from environment import Environment
-from callables import OrionFunction, OrionCallable
+from callables import OrionFunction, OrionCallable, OrionComponent
 
 class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
     """
@@ -71,6 +71,45 @@ class Interpreter(ast.ExprVisitor, ast.StmtVisitor):
             value = self._evaluate(stmt.value)
 
         raise Return(value)
+
+    def visit_component_stmt(self, stmt: ast.ComponentStmt):
+        component = OrionComponent(stmt.name.lexeme)
+
+        for body_stmt in stmt.body:
+            # The visitors will now return the data they parse.
+            result = body_stmt.accept(self)
+            if not result: continue
+
+            node_type, data = result
+            if node_type == "style":
+                prop_name, prop_value = data
+                component.styles[prop_name] = prop_value
+            elif node_type == "state":
+                state_name, styles_dict = data
+                component.state_styles[state_name] = styles_dict
+
+        self.environment.define(stmt.name.lexeme, component)
+        return None
+
+    def visit_state_block_stmt(self, stmt: ast.StateBlock):
+        state_name = stmt.name.lexeme
+        styles = {}
+        for prop_stmt in stmt.body:
+            # Assuming state blocks only contain style props
+            result = prop_stmt.accept(self)
+            if result:
+                node_type, data = result
+                if node_type == "style":
+                    prop_name, prop_value = data
+                    styles[prop_name] = prop_value
+
+        return ("state", (state_name, styles))
+
+    def visit_style_prop_stmt(self, stmt: ast.StyleProp):
+        prop_name = stmt.name.lexeme
+        # A real implementation would parse values more carefully.
+        prop_value = " ".join(t.lexeme for t in stmt.values)
+        return ("style", (prop_name, prop_value))
 
     def _execute_block(self, statements: List[ast.Stmt], environment: Environment):
         previous = self.environment

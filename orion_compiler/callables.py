@@ -64,3 +64,16 @@ class OrionFunction(OrionCallable):
 
     def __str__(self) -> str:
         return f"<fn {self.declaration.name.lexeme}>"
+
+
+class OrionComponent:
+    """
+    Represents a component declaration's runtime data, primarily its styles.
+    """
+    def __init__(self, name: str):
+        self.name = name
+        self.styles = {}
+        self.state_styles = {}
+
+    def __str__(self) -> str:
+        return f"<component {self.name}>"

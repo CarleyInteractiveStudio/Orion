@@ -34,6 +34,8 @@ class Parser:
         If a syntax error is found, it synchronizes and returns None.
         """
         try:
+            if self._match(TokenType.COMPONENT):
+                return self._component_declaration()
             if self._match(TokenType.FUNCTION):
                 return self._function("function")
             if self._match(TokenType.VAR):
@@ -117,6 +119,65 @@ class Parser:
         self._consume(TokenType.LEFT_BRACE, f"Expect '{{' before {kind} body.")
         body = self._block()
         return ast.Function(name, parameters, body)
+
+    def _component_declaration(self) -> ast.Stmt:
+        """Parses a component declaration."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect component name.")
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before component body.")
+
+        body = []
+        while not self._check(TokenType.RIGHT_BRACE) and not self._is_at_end():
+            body.append(self._component_body_statement())
+
+        self._consume(TokenType.RIGHT_BRACE, "Expect '}' after component body.")
+        return ast.ComponentStmt(name, body)
+
+    def _component_body_statement(self) -> ast.Stmt:
+        """Parses a statement inside a component body (style prop or state block)."""
+        # Check if it's a state block (e.g., 'hover {')
+        if self._check(TokenType.IDENTIFIER) and self._check_next(TokenType.LEFT_BRACE):
+            return self._state_block()
+
+        # Otherwise, parse it as a style property
+        return self._style_property()
+
+    def _state_block(self) -> ast.Stmt:
+        """Parses a nested state block like 'hover { ... }'."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect state name.")
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before state block body.")
+
+        props = []
+        while not self._check(TokenType.RIGHT_BRACE) and not self._is_at_end():
+            props.append(self._style_property())
+
+        self._consume(TokenType.RIGHT_BRACE, "Expect '}' after state block body.")
+        return ast.StateBlock(name, props)
+
+    def _style_property(self) -> ast.Stmt:
+        """Parses a style property like 'name: value1, value2;'."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect property name.")
+        self._consume(TokenType.COLON, "Expect ':' after property name.")
+
+        values = []
+        while not self._check(TokenType.SEMICOLON) and not self._is_at_end():
+            # Special case for comma-separated values
+            if len(values) > 0 and self._peek().token_type != TokenType.COMMA:
+                pass # let it be consumed
+
+            if self._peek().token_type == TokenType.COMMA:
+                 self._consume(TokenType.COMMA, "Unexpected comma.")
+                 continue
+
+            values.append(self._advance())
+
+        self._consume(TokenType.SEMICOLON, "Expect ';' after property value.")
+        return ast.StyleProp(name, values)
+
+    def _check_next(self, token_type: TokenType) -> bool:
+        """Checks the type of the token after the current one."""
+        if self._is_at_end(): return False
+        if self.tokens[self.current + 1].token_type == TokenType.EOF: return False
+        return self.tokens[self.current + 1].token_type == token_type
 
     def _block(self) -> List[ast.Stmt]:
         """Parses a block of statements."""
