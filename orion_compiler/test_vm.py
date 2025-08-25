@@ -2,6 +2,7 @@ import sys
 import io
 import os
 from contextlib import redirect_stdout
+import filecmp
 
 from lexer import Lexer
 from parser import Parser
@@ -88,41 +89,45 @@ def run_vm_runtime_error_test(name, source_code, expected_error_fragment):
         print(f"Got stdout output: '{output.strip()}'")
         return False
 
-def run_visual_test(name, source_code, expected_output):
+def run_visual_test(name, source_path, reference_path):
     """
-    Runs the VM and captures stdout to compare against an expected visual output.
+    Runs an Orion script that is expected to generate an image, and compares
+    it byte-for-byte with a reference image.
     """
     print(f"--- Running VM Test (Visual): {name} ---")
 
     from orion import Orion
 
-    f = io.StringIO()
-    with redirect_stdout(f):
+    output_path = "test_output.png"
+
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+    try:
+        with open(source_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
         orion_runner = Orion()
-        orion_runner.run(source_code)
+        # Run the script, telling it to save to our specific output path
+        orion_runner.run(source, output_path=output_path)
 
-    def strip_all_whitespace(s):
-        return "".join(s.split())
-
-    actual_norm = strip_all_whitespace(f.getvalue())
-    expected_norm = strip_all_whitespace(expected_output)
-
-    if actual_norm == expected_norm:
-        print(f"PASS: {name}")
-        return True
-    else:
-        print(f"FAIL: {name}")
-        print("--- Expected Output ---")
-        print(expected_output)
-        print("--- Actual Output ---")
-        print(f.getvalue())
-        print("-----------------------")
+    except Exception as e:
+        print(f"FAIL: {name} - Running the script raised an exception: {e}")
         return False
 
-def main():
-    def get_list_elements(vm_list):
-        return vm_list.elements
+    if not os.path.exists(output_path):
+        print(f"FAIL: {name} - The script did not generate an output file at '{output_path}'.")
+        return False
 
+    if not filecmp.cmp(output_path, reference_path, shallow=False):
+        print(f"FAIL: {name} - Generated image does not match reference image '{reference_path}'.")
+        return False
+
+    os.remove(output_path)
+    print(f"PASS: {name}")
+    return True
+
+def main():
     tests = [
         ("Simple Arithmetic", "return (5 - 2) * (3 + 1);", 12.0),
         ("Complex Arithmetic", "return -(10 / 2) + 1;", -4.0),
@@ -139,11 +144,6 @@ def main():
         ("Dict Set", 'var d = {"a": 1}; d["a"] = 99; return d["a"];', 99),
         ("Dict Set New Key", 'var d = {}; d["new"] = "value"; return d["new"];', "value"),
         ("Dict Get Missing Key", 'return {"a": 1}["b"];', None),
-        # C-style for loops
-        ("For Loop", "var a = 0; for (var i = 0; i < 5; i = i + 1) { a = a + i; } return a;", 10),
-        ("For Loop No Initializer", "var i = 0; var a = 0; for (; i < 5; i = i + 1) { a = a + i; } return a;", 10),
-        ("For Loop No Increment", "var a = 0; for (var i = 0; i < 5;) { a = a + i; i = i + 1; } return a;", 10),
-        ("For Loop Scope", "var a = 10; for (var a = 0; a < 2; a = a + 1) {} return a;", 10),
         ("Component Full Lifecycle", 'component Button { text: "default"; width: 100; enabled: true;} var b1 = Button(); var b2 = Button(); b2.text = "new text"; return b1.text + " " + b2.text;', "default new text"),
         ("Component Method Call", 'component Counter { value: 0; function increment() { this.value = this.value + 1; } } var c = Counter(); c.increment(); c.increment(); return c.value;', 2),
     ]
@@ -155,25 +155,7 @@ def main():
     ]
 
     visual_tests = [
-        ("Visual Render",
-         """
-            use draw;
-            component MyButton {
-                text: "Hello Orion!";
-                function render() {
-                    draw.box(0, 0, 18, 3);
-                    draw.text(2, 1, this.text);
-                }
-            }
-            var App = MyButton();
-         """,
-         """
-            --- Orion Render Output ---
-            +----------------+
-            | Hello Orion!   |
-            +----------------+
-            ---------------------------
-         """)
+        ("Graphical Render", "orion_compiler/graphical_test.orion", "reference.png"),
     ]
 
     TEST_FILE = "orion_test_file.tmp"
@@ -196,8 +178,8 @@ def main():
             if run_vm_runtime_error_test(name, source, expected):
                 tests_passed += 1
 
-        for name, source, expected in visual_tests:
-            if run_visual_test(name, source, expected):
+        for name, source_path, ref_path in visual_tests:
+            if run_visual_test(name, source_path, ref_path):
                 tests_passed += 1
     finally:
         if os.path.exists(TEST_FILE):

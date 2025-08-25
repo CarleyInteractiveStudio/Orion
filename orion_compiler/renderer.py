@@ -1,13 +1,18 @@
-class TextRenderer:
+import skia
+
+class GraphicalRenderer:
     """
-    A simple text-based renderer that draws shapes onto a character grid.
+    Renders draw commands to an image file using the Skia graphics library.
     """
     def __init__(self, width: int, height: int):
         if width <= 0 or height <= 0:
             raise ValueError("Width and height must be positive integers.")
         self.width = width
         self.height = height
-        self.canvas = [[' ' for _ in range(width)] for _ in range(height)]
+        self.surface = skia.Surface(width, height)
+        self.canvas = self.surface.getCanvas()
+        # Set a default background color
+        self.canvas.clear(skia.ColorWHITE)
 
     def process_commands(self, commands: list[dict]):
         """Processes a list of draw command dictionaries."""
@@ -19,40 +24,49 @@ class TextRenderer:
                 self._draw_text(command)
 
     def _draw_box(self, command: dict):
-        """Draws a box on the canvas."""
-        x, y = command.get("x", 0), command.get("y", 0)
-        width, height = command.get("width", 1), command.get("height", 1)
-
-        # Draw corners
-        self._set_char(x, y, '+')
-        self._set_char(x + width - 1, y, '+')
-        self._set_char(x, y + height - 1, '+')
-        self._set_char(x + width - 1, y + height - 1, '+')
-
-        # Draw horizontal lines
-        for i in range(1, width - 1):
-            self._set_char(x + i, y, '-')
-            self._set_char(x + i, y + height - 1, '-')
-
-        # Draw vertical lines
-        for i in range(1, height - 1):
-            self._set_char(x, y + i, '|')
-            self._set_char(x + width - 1, y + i, '|')
+        """Draws a filled rectangle on the canvas."""
+        paint = skia.Paint(
+            Color=self._parse_color(command.get("color", "#000000")),
+            Style=skia.Paint.kFill_Style
+        )
+        rect = skia.Rect.MakeXYWH(
+            command.get("x", 0),
+            command.get("y", 0),
+            command.get("width", 10),
+            command.get("height", 10)
+        )
+        self.canvas.drawRect(rect, paint)
 
     def _draw_text(self, command: dict):
         """Draws text on the canvas."""
-        x, y = command.get("x", 0), command.get("y", 0)
-        text = command.get("text", "")
+        paint = skia.Paint(
+            Color=self._parse_color(command.get("color", "#000000"))
+        )
+        font = skia.Font(
+            None, # Default typeface
+            command.get("fontSize", 12)
+        )
+        self.canvas.drawString(
+            command.get("text", ""),
+            command.get("x", 0),
+            command.get("y", 0),
+            font,
+            paint
+        )
 
-        for i, char in enumerate(text):
-            self._set_char(x + i, y, char)
+    def _parse_color(self, hex_color: str) -> skia.Color:
+        """Parses a hex color string (e.g., #RRGGBB) into a skia.Color."""
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 6:
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            return skia.Color(r, g, b)
+        # Return black for invalid formats
+        return skia.ColorBLACK
 
-    def _set_char(self, x: int, y: int, char: str):
-        """Safely sets a character on the canvas, ignoring out-of-bounds writes."""
-        if 0 <= y < self.height and 0 <= x < self.width:
-            self.canvas[y][x] = char
-
-    def render_to_console(self):
-        """Prints the canvas to the console."""
-        for row in self.canvas:
-            print("".join(row))
+    def save_to_file(self, filepath: str = "output.png"):
+        """Saves the canvas to a PNG image file."""
+        image = self.surface.makeImageSnapshot()
+        image.save(filepath, skia.kPNG)
+        print(f"INFO: Image saved to {filepath}")

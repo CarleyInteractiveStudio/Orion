@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any
 import time
 import os
-from renderer import TextRenderer
 
 @dataclass
 class CallFrame:
@@ -71,29 +70,41 @@ class VM:
 
     def _init_draw_module(self):
         """Initializes the native 'draw' module."""
-        def native_draw_box(x, y, width, height):
-            # For now, just basic validation.
-            if not all(isinstance(arg, int) for arg in [x, y, width, height]):
-                # In a real implementation, we might raise a specific VM runtime error.
-                print("RuntimeError: draw.box requires integer arguments.")
+        def native_draw_box(options):
+            if not isinstance(options, OrionDict):
+                print("RuntimeError: draw.box requires a dictionary argument.")
                 return None
-            self.draw_commands.append({
-                "command": "box", "x": x, "y": y, "width": width, "height": height
-            })
-            return None # Native functions should return a value
 
-        def native_draw_text(x, y, text):
-            if not (isinstance(x, int) and isinstance(y, int) and isinstance(text, str)):
-                print("RuntimeError: draw.text requires (int, int, string) arguments.")
-                return None
+            props = options.pairs
             self.draw_commands.append({
-                "command": "text", "x": x, "y": y, "text": text
+                "command": "box",
+                "x": props.get("x", 0),
+                "y": props.get("y", 0),
+                "width": props.get("width", 10),
+                "height": props.get("height", 5),
+                "color": props.get("color", "#FFFFFF"),
+            })
+            return None
+
+        def native_draw_text(options):
+            if not isinstance(options, OrionDict):
+                print("RuntimeError: draw.text requires a dictionary argument.")
+                return None
+
+            props = options.pairs
+            self.draw_commands.append({
+                "command": "text",
+                "x": props.get("x", 0),
+                "y": props.get("y", 0),
+                "text": props.get("text", ""),
+                "color": props.get("color", "#FFFFFF"),
+                "fontSize": props.get("fontSize", 12),
             })
             return None
 
         draw_module = {
-            "box": OrionNativeFunction(4, native_draw_box),
-            "text": OrionNativeFunction(3, native_draw_text),
+            "box": OrionNativeFunction(1, native_draw_box),
+            "text": OrionNativeFunction(1, native_draw_text),
         }
         self.native_modules["draw"] = draw_module
 
