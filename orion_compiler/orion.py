@@ -1,9 +1,17 @@
+import time
+import sdl2
+import sdl2.ext
+import skia
+import ctypes
+
 from lexer import Lexer
 from parser import Parser
 from compiler import compile as compile_source
 from vm import VM, InterpretResult
 from objects import OrionComponentInstance
 from renderer import GraphicalRenderer
+from event_dispatcher import EventDispatcher
+
 
 class Orion:
     """
@@ -18,7 +26,7 @@ class Orion:
     def run(self, source: str, output_path: str = "output.png"):
         """
         Runs a piece of Orion source code. If a renderable 'App' component
-        is found, it also renders it and saves it to the output_path.
+        is found, it opens a window and begins the event loop.
         """
         lexer = Lexer(source)
         tokens = lexer.scan_tokens()
@@ -35,17 +43,53 @@ class Orion:
             self.had_error = True
             return
 
-        result, last_value = self.vm.interpret(main_function)
+        # Run the script to define components, create instances, etc.
+        result, _ = self.vm.interpret(main_function)
 
-        if result == InterpretResult.OK:
-            app_instance = self.vm.globals.get("App")
-            if isinstance(app_instance, OrionComponentInstance) and "render" in app_instance.definition.methods:
-                self.vm.draw_commands = []
-                self.vm.call_method_on_instance(app_instance, "render")
+        # After the script runs, check for an 'App' component to render.
+        app_instance = self.vm.globals.get("App")
+        if result == InterpretResult.OK and isinstance(app_instance, OrionComponentInstance):
+            self._run_gui(app_instance)
+        else:
+            print("INFO: No 'App' component instance found or script failed. Exiting.")
 
-                renderer = GraphicalRenderer(400, 300)
-                renderer.process_commands(self.vm.draw_commands)
-                renderer.save_to_file(output_path)
+
+    def _run_gui(self, app_instance: OrionComponentInstance):
+        """Initializes SDL2 and starts the main application loop."""
+        print("INFO: Starting Orion GUI application...")
+
+        sdl2.ext.init()
+
+        WIDTH, HEIGHT = 800, 600
+        window = sdl2.ext.Window("Orion Application", size=(WIDTH, HEIGHT))
+        window.show()
+
+        window_surface = window.get_surface()
+        renderer = GraphicalRenderer(WIDTH, HEIGHT)
+        dispatcher = EventDispatcher()
+
+        running = True
+        event = sdl2.SDL_Event()
+        while running:
+            while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
+                if event.type == sdl2.SDL_QUIT:
+                    running = False
+
+                # Pass other events to the dispatcher
+                dispatcher.dispatch(event, self.vm, [app_instance])
+
+            # --- Render a frame ---
+            self.vm.draw_commands = []
+            self.vm.call_method_on_instance(app_instance, "render")
+
+            renderer.process_commands(self.vm.draw_commands)
+            skia_pixels = renderer.surface.tobytes()
+            ctypes.memmove(window_surface.pixels, skia_pixels, len(skia_pixels))
+
+            window.refresh()
+            sdl2.SDL_Delay(10)
+
+        sdl2.ext.quit()
 
 
     def run_file(self, path: str):
@@ -67,6 +111,7 @@ class Orion:
             try:
                 line = input("> ")
                 if not line: continue
+                self.vm = VM()
                 self.run(line)
                 self.had_error = False
             except KeyboardInterrupt:

@@ -2,7 +2,6 @@ import sys
 import io
 import os
 from contextlib import redirect_stdout
-import filecmp
 
 from lexer import Lexer
 from parser import Parser
@@ -89,44 +88,6 @@ def run_vm_runtime_error_test(name, source_code, expected_error_fragment):
         print(f"Got stdout output: '{output.strip()}'")
         return False
 
-def run_visual_test(name, source_path, reference_path):
-    """
-    Runs an Orion script that is expected to generate an image, and compares
-    it byte-for-byte with a reference image.
-    """
-    print(f"--- Running VM Test (Visual): {name} ---")
-
-    from orion import Orion
-
-    output_path = "test_output.png"
-
-    if os.path.exists(output_path):
-        os.remove(output_path)
-
-    try:
-        with open(source_path, 'r', encoding='utf-8') as f:
-            source = f.read()
-
-        orion_runner = Orion()
-        # Run the script, telling it to save to our specific output path
-        orion_runner.run(source, output_path=output_path)
-
-    except Exception as e:
-        print(f"FAIL: {name} - Running the script raised an exception: {e}")
-        return False
-
-    if not os.path.exists(output_path):
-        print(f"FAIL: {name} - The script did not generate an output file at '{output_path}'.")
-        return False
-
-    if not filecmp.cmp(output_path, reference_path, shallow=False):
-        print(f"FAIL: {name} - Generated image does not match reference image '{reference_path}'.")
-        return False
-
-    os.remove(output_path)
-    print(f"PASS: {name}")
-    return True
-
 def main():
     tests = [
         ("Simple Arithmetic", "return (5 - 2) * (3 + 1);", 12.0),
@@ -154,10 +115,6 @@ def main():
         ("Component with Arguments", 'component Button {} return Button(1);', "constructor takes no arguments, but got 1"),
     ]
 
-    visual_tests = [
-        ("Graphical Render", "orion_compiler/graphical_test.orion", "reference.png"),
-    ]
-
     TEST_FILE = "orion_test_file.tmp"
     io_tests = [
         ("IO Write & Exists", f'use io; io.write("{TEST_FILE}", "hello"); return io.exists("{TEST_FILE}");', True),
@@ -177,15 +134,11 @@ def main():
         for name, source, expected in runtime_error_tests:
             if run_vm_runtime_error_test(name, source, expected):
                 tests_passed += 1
-
-        for name, source_path, ref_path in visual_tests:
-            if run_visual_test(name, source_path, ref_path):
-                tests_passed += 1
     finally:
         if os.path.exists(TEST_FILE):
             os.remove(TEST_FILE)
 
-    total_tests = len(all_tests) + len(runtime_error_tests) + len(visual_tests)
+    total_tests = len(all_tests) + len(runtime_error_tests)
 
     print(f"--- Running VM Test: Native Print ---")
     total_tests += 1
