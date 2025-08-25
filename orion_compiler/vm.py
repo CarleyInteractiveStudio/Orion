@@ -1,5 +1,5 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction, OrionNativeFunction, OrionInstance, OrionList, OrionDict
+from objects import OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionInstance, OrionList, OrionDict
 from tokens import Token
 from dataclasses import dataclass
 from typing import Any
@@ -120,8 +120,27 @@ class VM:
                         return InterpretResult.RUNTIME_ERROR, None
                     frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1)
                     self.frames.append(frame)
+                elif isinstance(callee, OrionComponentDef):
+                    if arg_count != 0:
+                        print(f"RuntimeError: Component '{callee.name}' constructor takes no arguments, but got {arg_count}.")
+                        return InterpretResult.RUNTIME_ERROR, None
+
+                    # Pop the component definition
+                    definition = self.stack.pop()
+                    instance = OrionComponentInstance(definition)
+
+                    # Initialize properties with default values
+                    for prop_node in definition.properties:
+                        prop_name = prop_node.name.lexeme
+                        default_value = None
+                        if len(prop_node.values) == 1:
+                            # The lexer stores the literal value in the token
+                            default_value = prop_node.values[0].literal
+                        instance.fields[prop_name] = default_value
+
+                    self.push(instance)
                 else:
-                    print("RuntimeError: Can only call functions.")
+                    print(f"RuntimeError: Can only call functions and components, not {type(callee).__name__}.")
                     return InterpretResult.RUNTIME_ERROR, None
 
             elif instruction == OpCode.OP_CONSTANT: self.push(read_constant())

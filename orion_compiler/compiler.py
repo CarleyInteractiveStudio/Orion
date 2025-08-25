@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import ast_nodes as ast
 from bytecode import Chunk, OpCode
 from tokens import Token, TokenType
-from objects import OrionCompiledFunction
+from objects import OrionCompiledFunction, OrionComponentDef
 from orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
 from errors import type_error
 
@@ -28,7 +28,11 @@ class Local:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = {}
+        self.globals: dict[str, Type] = {
+            "clock": FUNCTION,
+            "print": FUNCTION,
+        }
+        self.component_props: dict[str, dict[str, Type]] = {}
         self.scope_depth: int = 0
         self.had_error = False
         self.type_map = {
@@ -76,23 +80,33 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         left_type = self._analyze_expr(expr.left)
         right_type = self._analyze_expr(expr.right)
         op = expr.operator.token_type.name
-        if left_type == ANY or right_type == ANY: return ANY
+
+        # Handle numeric operators
         if op in ('MINUS', 'STAR', 'SLASH', 'GREATER', 'LESS'):
-            if left_type != NUMBER or right_type != NUMBER:
+            # If we know the types and they're wrong, error. Otherwise, assume it's okay.
+            if left_type != ANY and right_type != ANY and (left_type != NUMBER or right_type != NUMBER):
                 type_error(expr.operator, f"Operands for {op} must be numbers.")
                 self.had_error = True
-            return NUMBER if op not in ('GREATER', 'LESS') else BOOL
+            # We can still infer the result type even if one operand is 'any'.
+            return BOOL if op in ('GREATER', 'LESS') else NUMBER
+
+        # Handle addition/concatenation
         if op == 'PLUS':
             if (left_type == NUMBER and right_type == NUMBER): return NUMBER
             if (left_type == STRING and right_type == STRING): return STRING
+            # If one side is 'any', we can't know the result type.
+            if left_type == ANY or right_type == ANY: return ANY
+            # Otherwise, it's a definite error.
             type_error(expr.operator, "Operands for '+' must be two numbers or two strings.")
             self.had_error = True
             return ANY
+
+        # Handle equality
         if op == 'EQUAL_EQUAL':
-            if not self._is_assignable(left_type, right_type) and not self._is_assignable(right_type, left_type):
-                type_error(expr.operator, f"Cannot compare values of type {left_type} and {right_type}.")
-                self.had_error = True
+            # We can allow comparison between any two types.
+            # The result is always a boolean.
             return BOOL
+
         return ANY
 
     def visit_unary_expr(self, expr: ast.Unary) -> Type:
@@ -210,35 +224,120 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
 
         return False
 
-    def visit_function_stmt(self, stmt: ast.Function): pass
+    def visit_function_stmt(self, stmt: ast.Function):
+        # Declare the function name first to allow for recursion.
+        # We don't have full FunctionType analysis yet, so use the generic type.
+        if self.scope_depth > 0:
+            self._add_local(stmt.name, FUNCTION)
+        else:
+            self.globals[stmt.name.lexeme] = FUNCTION
+
+        # Analyze the function body in a new scope.
+        self._begin_scope()
+        for param in stmt.params:
+            # Parameters are not typed yet, so treat as ANY.
+            self._add_local(param.name, ANY)
+
+        self.analyze(stmt.body)
+        self._end_scope()
+
     def visit_return_stmt(self, stmt: ast.Return):
         if stmt.value: self._analyze_expr(stmt.value)
-    def visit_call_expr(self, expr: ast.Call) -> Type: return ANY
+
+    def visit_call_expr(self, expr: ast.Call) -> Type:
+        from orion_types import ComponentType, TYPE
+        callee_type = self._analyze_expr(expr.callee)
+
+        # Handle component instantiation calls, e.g., Button()
+        if callee_type == TYPE and isinstance(expr.callee, ast.Variable):
+            component_name = expr.callee.name.lexeme
+            # The type of the *instance* is the ComponentType we registered
+            if component_name in self.type_map and isinstance(self.type_map[component_name], ComponentType):
+                # TODO: Check arguments match a constructor definition later
+                return self.type_map[component_name]
+
+        # TODO: Handle calls to FunctionType
+        return ANY
+
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
     def visit_get_expr(self, expr: ast.Get) -> Type:
         object_type = self._analyze_expr(expr.object)
+        from orion_types import ComponentType
+
         if isinstance(object_type, ListType):
             if expr.name.lexeme == "length":
                 return NUMBER
             type_error(expr.name, f"Type 'list' has no property '{expr.name.lexeme}'.")
             self.had_error = True
             return ANY
+
+        if isinstance(object_type, ComponentType):
+            component_name = object_type.name
+            prop_name = expr.name.lexeme
+            if component_name in self.component_props and prop_name in self.component_props[component_name]:
+                return self.component_props[component_name][prop_name]
+
+            type_error(expr.name, f"Component '{component_name}' has no property named '{prop_name}'.")
+            self.had_error = True
+            return ANY
+
         if object_type == MODULE:
             return ANY
 
-        type_error(expr.name, f"Only lists and modules have properties, not type '{object_type}'.")
-        self.had_error = True
+        if object_type != ANY:
+            type_error(expr.name, f"Only components, lists, and modules have properties, not type '{object_type}'.")
+            self.had_error = True
         return ANY
 
     def visit_set_expr(self, expr: ast.Set) -> Type:
         object_type = self._analyze_expr(expr.object)
+        value_type = self._analyze_expr(expr.value)
+        from orion_types import ComponentType
+
         if isinstance(object_type, ListType):
             type_error(expr.name, "Cannot set properties on a list.")
             self.had_error = True
+            return value_type
 
-        return self._analyze_expr(expr.value)
+        if isinstance(object_type, ComponentType):
+            component_name = object_type.name
+            prop_name = expr.name.lexeme
+            if component_name in self.component_props and prop_name in self.component_props[component_name]:
+                expected_type = self.component_props[component_name][prop_name]
+                if not self._is_assignable(expected_type, value_type):
+                    type_error(expr.name, f"Cannot assign value of type {value_type} to property '{prop_name}' of type {expected_type}.")
+                    self.had_error = True
+            else:
+                type_error(expr.name, f"Component '{component_name}' has no property named '{prop_name}'.")
+                self.had_error = True
+            return value_type
+
+        if object_type != ANY:
+            type_error(expr.name, f"Only components have settable properties, not type '{object_type}'.")
+            self.had_error = True
+        return value_type
     def visit_this_expr(self, expr: ast.This) -> Type: return ANY
-    def visit_component_stmt(self, stmt: ast.ComponentStmt): pass
+    def visit_component_stmt(self, stmt: ast.ComponentStmt):
+        from orion_types import ComponentType, TYPE
+        component_name = stmt.name.lexeme
+
+        # Register the component as a new type available for annotations
+        new_component_type = ComponentType(component_name)
+        self.type_map[component_name] = new_component_type
+
+        # Declare the global variable (e.g., 'Button') that holds the definition.
+        # Its type is 'type'.
+        self.globals[component_name] = TYPE
+
+        # Analyze and store properties for type checking
+        props: dict[str, Type] = {}
+        for prop_stmt in stmt.body:
+            if isinstance(prop_stmt, ast.StyleProp):
+                prop_name = prop_stmt.name.lexeme
+                props[prop_name] = self._infer_type_from_style_prop(prop_stmt)
+            # We can add analysis for Var and Function stmts inside components later
+        self.component_props[component_name] = props
+
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
@@ -310,6 +409,20 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             type_error(expr.bracket, f"Object of type {object_type} is not subscriptable.")
             self.had_error = True
         return value_type
+
+    def _infer_type_from_style_prop(self, prop: ast.StyleProp) -> Type:
+        if not prop.values:
+            return NIL
+
+        # Simple case: single literal value
+        if len(prop.values) == 1:
+            token = prop.values[0]
+            if token.token_type == TokenType.NUMBER: return NUMBER
+            if token.token_type == TokenType.STRING: return STRING
+            if token.token_type in (TokenType.TRUE, TokenType.FALSE): return BOOL
+
+        # For now, complex values (e.g., font: "Arial" 12) or variables are not type-checked for properties.
+        return ANY
 
 class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, enclosing, function_stmt: ast.Function, function_type: str):
@@ -451,7 +564,16 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._compile_expr(expr.value)
         self._emit_bytes(OpCode.OP_SET_PROPERTY, self._make_constant(expr.name.lexeme))
     def visit_this_expr(self, expr: ast.This): pass
-    def visit_component_stmt(self, stmt: ast.ComponentStmt): pass
+    def visit_component_stmt(self, stmt: ast.ComponentStmt):
+        # Create the runtime component definition object.
+        # For now, we only handle simple properties, not methods or var declarations inside.
+        properties = [prop for prop in stmt.body if isinstance(prop, ast.StyleProp)]
+        component_def = OrionComponentDef(stmt.name.lexeme, properties)
+
+        # Wrap it in a constant and define a global variable for it.
+        self._emit_constant(component_def)
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
+
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass

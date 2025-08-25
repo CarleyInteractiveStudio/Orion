@@ -84,6 +84,8 @@ def main():
         ("Set dict element with wrong value type", 'var d: dict[string, number] = {}; d["a"] = "b";', "of type string to a dict of type dict[string, number]"),
         ("Set dict element with wrong key type", 'var d: dict[string, number] = {}; d[1] = 1;', "Key of type number cannot be used to index a dict with key type string"),
         ("Assign dict element to wrong type", 'var d: dict[string, number] = {"a": 1}; var s: string = d["a"];', "of type number cannot be assigned to variable of type string"),
+        ("Component get non-existent prop", "component C {} var c = C(); return c.foo;", "has no property named 'foo'"),
+        ("Component set wrong type", 'component C { p: 1; } var c = C(); c.p = "a";', "Cannot assign value of type string to property 'p' of type number"),
     ]
 
     valid_tests = [
@@ -106,6 +108,7 @@ def main():
         ("Assign correctly typed dict", 'var d: dict[string, number] = {"a": 1};'),
         ("Get element from typed dict", 'var d: dict[string, number] = {"a": 1}; var n: number = d["a"];'),
         ("Set element in typed dict", 'var d: dict[string, number] = {}; d["a"] = 1;'),
+        ("Component valid access", 'component C { p: 1; } var c = C(); c.p = 2; var x: number = c.p;'),
     ]
 
     tests_passed = 0

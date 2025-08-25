@@ -29,6 +29,13 @@ class DictType(Type):
     def __str__(self) -> str:
         return f"dict[{self.key_type}, {self.value_type}]"
 
+@dataclass(frozen=True)
+class ComponentType(Type):
+    name: str
+
+    def __str__(self) -> str:
+        return self.name
+
 # --- Singleton Instances of Primitive Types ---
 
 ANY = PrimitiveType("any")
@@ -37,6 +44,7 @@ BOOL = PrimitiveType("bool")
 NUMBER = PrimitiveType("number")
 STRING = PrimitiveType("string")
 FUNCTION = PrimitiveType("function")
+TYPE = PrimitiveType("type")
 COMPONENT = PrimitiveType("component")
 MODULE = PrimitiveType("module")
 

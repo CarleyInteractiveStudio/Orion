@@ -113,11 +113,13 @@ def main():
         ("For Loop No Initializer", "var i = 0; var a = 0; for (; i < 5; i = i + 1) { a = a + i; } return a;", 10),
         ("For Loop No Increment", "var a = 0; for (var i = 0; i < 5;) { a = a + i; i = i + 1; } return a;", 10),
         ("For Loop Scope", "var a = 10; for (var a = 0; a < 2; a = a + 1) {} return a;", 10),
+        ("Component Full Lifecycle", 'component Button { text: "default"; width: 100; enabled: true;} var b1 = Button(); var b2 = Button(); b2.text = "new text"; return b1.text + " " + b2.text;', "default new text"),
     ]
 
     runtime_error_tests = [
         ("Index Out of Bounds (Get)", "return [1][10];", "List index 10 out of range"),
         ("Index Out of Bounds (Set)", "var a = [1]; a[10] = 2;", "List index 10 out of range"),
+        ("Component with Arguments", 'component Button {} return Button(1);', "constructor takes no arguments, but got 1"),
     ]
 
     TEST_FILE = "orion_test_file.tmp"
