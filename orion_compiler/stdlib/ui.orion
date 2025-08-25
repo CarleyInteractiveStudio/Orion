@@ -1,0 +1,109 @@
+// Orion Standard UI Library
+// Version 0.1
+module ui;
+use draw;
+
+// A reusable, stateful button component.
+component Button {
+    // --- Default Properties ---
+    // These can be overridden by passing props during instantiation.
+    x: 0;
+    y: 0;
+    width: 150;
+    height: 50;
+    text: "Button";
+    color: "#3498DB"; // A nice blue
+
+    // The function to call when the button is clicked.
+    // The parent component will pass a function to this prop.
+    onClick: nil;
+
+    // --- State ---
+    // This is the internal, private state of the component.
+    state: {
+        "pressed": false
+    };
+
+    // --- Methods ---
+
+    // The main render method, called on every frame the component is "dirty".
+    function render() {
+        var button_color = this.color;
+        // If the button is pressed, show a slightly darker color.
+        if (this.state.pressed) {
+            button_color = "#2980B9";
+        }
+
+        draw.box({
+            x: this.x, y: this.y,
+            width: this.width, height: this.height,
+            color: button_color
+        });
+
+        draw.text({
+            x: this.x + 20, y: this.y + 20,
+            text: this.text,
+            color: "#FFFFFF",
+            fontSize: 18
+        });
+    }
+
+    // The internal event handler called by the EventDispatcher.
+    function onClick() {
+        // We can add visual feedback, like a quick flash.
+        this.state.pressed = true;
+
+        // If the parent passed an onClick callback, call it.
+        if (this.onClick != nil) {
+            var callback = this.onClick;
+            callback();
+        }
+
+        // We could have a timer to set pressed back to false,
+        -        // but we don't have timers yet! This is a good next feature.
+-        // For now, it will just stay pressed.
++        // but we don't have timers yet! For now, it will just stay pressed.
+    }
+}
+
+
+// A simple Panel component for grouping other components.
+component Panel {
+    x: 0;
+    y: 0;
+    width: 400;
+    height: 300;
+    color: "#ECF0F1"; // A very light gray
+
+    // Children will be passed as a prop in the future.
+    children: [];
+
+    function render() {
+        draw.box({
+            x: this.x, y: this.y,
+            width: this.width, height: this.height,
+            color: this.color
+        });
+        // We will render children here later.
+        return this.children;
+    }
+}
+
+
+// A simple text label.
+component Label {
+    x: 0;
+    y: 0;
+    text: "Label";
+    color: "#2C3E50"; // Dark blue/gray
+    fontSize: 16;
+
+    function render() {
+        draw.text({
+            x: this.x, y: this.y,
+            text: this.text,
+            color: this.color,
+            fontSize: this.fontSize
+        });
+    }
+}

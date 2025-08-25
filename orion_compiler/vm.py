@@ -229,14 +229,25 @@ class VM:
                     namespace.fields = self.native_modules[module_name]
                     self.push(namespace)
                     continue
-                file_path = f"orion_compiler/{module_name}.orion"
-                from orion import Orion
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        source = f.read()
-                except FileNotFoundError:
-                    print(f"RuntimeError: Module file not found: '{file_path}'")
+
+                # Module resolution order: stdlib -> current directory
+                possible_paths = [
+                    f"orion_compiler/stdlib/{module_name}.orion",
+                    f"orion_compiler/{module_name}.orion"
+                ]
+
+                source = None
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        with open(path, "r", encoding="utf-8") as f:
+                            source = f.read()
+                        break
+
+                if source is None:
+                    print(f"RuntimeError: Module '{module_name}' not found.")
                     return InterpretResult.RUNTIME_ERROR, None
+
+                from orion import Orion
                 module_runner = Orion()
                 module_runner.run(source)
                 namespace = OrionInstance()
