@@ -88,6 +88,37 @@ def run_vm_runtime_error_test(name, source_code, expected_error_fragment):
         print(f"Got stdout output: '{output.strip()}'")
         return False
 
+def run_visual_test(name, source_code, expected_output):
+    """
+    Runs the VM and captures stdout to compare against an expected visual output.
+    """
+    print(f"--- Running VM Test (Visual): {name} ---")
+
+    from orion import Orion
+
+    f = io.StringIO()
+    with redirect_stdout(f):
+        orion_runner = Orion()
+        orion_runner.run(source_code)
+
+    def strip_all_whitespace(s):
+        return "".join(s.split())
+
+    actual_norm = strip_all_whitespace(f.getvalue())
+    expected_norm = strip_all_whitespace(expected_output)
+
+    if actual_norm == expected_norm:
+        print(f"PASS: {name}")
+        return True
+    else:
+        print(f"FAIL: {name}")
+        print("--- Expected Output ---")
+        print(expected_output)
+        print("--- Actual Output ---")
+        print(f.getvalue())
+        print("-----------------------")
+        return False
+
 def main():
     def get_list_elements(vm_list):
         return vm_list.elements
@@ -123,6 +154,28 @@ def main():
         ("Component with Arguments", 'component Button {} return Button(1);', "constructor takes no arguments, but got 1"),
     ]
 
+    visual_tests = [
+        ("Visual Render",
+         """
+            use draw;
+            component MyButton {
+                text: "Hello Orion!";
+                function render() {
+                    draw.box(0, 0, 18, 3);
+                    draw.text(2, 1, this.text);
+                }
+            }
+            var App = MyButton();
+         """,
+         """
+            --- Orion Render Output ---
+            +----------------+
+            | Hello Orion!   |
+            +----------------+
+            ---------------------------
+         """)
+    ]
+
     TEST_FILE = "orion_test_file.tmp"
     io_tests = [
         ("IO Write & Exists", f'use io; io.write("{TEST_FILE}", "hello"); return io.exists("{TEST_FILE}");', True),
@@ -142,11 +195,15 @@ def main():
         for name, source, expected in runtime_error_tests:
             if run_vm_runtime_error_test(name, source, expected):
                 tests_passed += 1
+
+        for name, source, expected in visual_tests:
+            if run_visual_test(name, source, expected):
+                tests_passed += 1
     finally:
         if os.path.exists(TEST_FILE):
             os.remove(TEST_FILE)
 
-    total_tests = len(all_tests) + len(runtime_error_tests)
+    total_tests = len(all_tests) + len(runtime_error_tests) + len(visual_tests)
 
     print(f"--- Running VM Test: Native Print ---")
     total_tests += 1

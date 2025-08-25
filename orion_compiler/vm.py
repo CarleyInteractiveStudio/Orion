@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 import time
 import os
+from renderer import TextRenderer
 
 @dataclass
 class CallFrame:
@@ -32,7 +33,9 @@ class VM:
 
         # --- Native Modules ---
         self.native_modules: dict = {}
+        self.draw_commands: list = []
         self._init_io_module()
+        self._init_draw_module()
 
     def _define_native(self, name: str, arity: int, func):
         self.globals[name] = OrionNativeFunction(arity, func)
@@ -66,12 +69,55 @@ class VM:
         }
         self.native_modules["io"] = io_module
 
+    def _init_draw_module(self):
+        """Initializes the native 'draw' module."""
+        def native_draw_box(x, y, width, height):
+            # For now, just basic validation.
+            if not all(isinstance(arg, int) for arg in [x, y, width, height]):
+                # In a real implementation, we might raise a specific VM runtime error.
+                print("RuntimeError: draw.box requires integer arguments.")
+                return None
+            self.draw_commands.append({
+                "command": "box", "x": x, "y": y, "width": width, "height": height
+            })
+            return None # Native functions should return a value
+
+        def native_draw_text(x, y, text):
+            if not (isinstance(x, int) and isinstance(y, int) and isinstance(text, str)):
+                print("RuntimeError: draw.text requires (int, int, string) arguments.")
+                return None
+            self.draw_commands.append({
+                "command": "text", "x": x, "y": y, "text": text
+            })
+            return None
+
+        draw_module = {
+            "box": OrionNativeFunction(4, native_draw_box),
+            "text": OrionNativeFunction(3, native_draw_text),
+        }
+        self.native_modules["draw"] = draw_module
+
     def interpret(self, main_function: OrionCompiledFunction) -> InterpretResult:
         self.stack = []
         self.frames = []
         self.stack.append(main_function)
         frame = CallFrame(main_function, 0, 0)
         self.frames.append(frame)
+        return self._run()
+
+    def call_method_on_instance(self, instance: OrionComponentInstance, method_name: str):
+        """Finds and executes a method on a component instance."""
+        if method_name not in instance.definition.methods:
+            return # Or raise an error
+
+        method_code = instance.definition.methods[method_name]
+
+        # Manually set up the call on the stack
+        bound_method = OrionBoundMethod(instance, method_code)
+        self.push(bound_method)
+
+        # Set up a new call frame and run it
+        self._call_value(bound_method, 0)
         return self._run()
 
     def _run(self) -> (InterpretResult, Any):
@@ -106,50 +152,11 @@ class VM:
             elif instruction == OpCode.OP_CALL:
                 arg_count = read_byte()
                 callee = self.peek(arg_count)
-                if isinstance(callee, OrionNativeFunction):
-                    if callee.arity is not None and arg_count != callee.arity:
-                        print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
-                        return InterpretResult.RUNTIME_ERROR, None
-                    args = self.stack[-arg_count:]
-                    self.stack = self.stack[:-arg_count-1]
-                    result = callee.func(*args)
-                    self.push(result)
-                elif isinstance(callee, OrionCompiledFunction):
-                    if arg_count != callee.arity:
-                        print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
-                        return InterpretResult.RUNTIME_ERROR, None
-                    frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1)
-                    self.frames.append(frame)
-                elif isinstance(callee, OrionComponentDef):
-                    if arg_count != 0:
-                        print(f"RuntimeError: Component '{callee.name}' constructor takes no arguments, but got {arg_count}.")
-                        return InterpretResult.RUNTIME_ERROR, None
-                    definition = self.stack.pop()
-                    instance = OrionComponentInstance(definition)
-                    for prop_node in definition.properties:
-                        prop_name = prop_node.name.lexeme
-                        default_value = None
-                        if len(prop_node.values) == 1:
-                            default_value = prop_node.values[0].literal
-                        instance.fields[prop_name] = default_value
-                    self.push(instance)
-
-                elif isinstance(callee, OrionBoundMethod):
-                    if arg_count != callee.method.arity:
-                        print(f"RuntimeError: Method '{callee.method.name}' expected {callee.method.arity} arguments but got {arg_count}.")
-                        return InterpretResult.RUNTIME_ERROR, None
-
-                    # Replace the bound method on the stack with the instance it's bound to.
-                    # This makes the instance available in slot 0 for the 'this' keyword.
-                    self.stack[-1 - arg_count] = callee.receiver
-
-                    # Create a new call frame to execute the method's body.
-                    frame = CallFrame(callee.method, 0, len(self.stack) - arg_count - 1)
-                    self.frames.append(frame)
-
-                else:
-                    print(f"RuntimeError: Can only call functions and components, not {type(callee).__name__}.")
+                if not self._call_value(callee, arg_count):
                     return InterpretResult.RUNTIME_ERROR, None
+
+                # After a successful call, the frame might have changed.
+                frame = self.frames[-1]
 
             elif instruction == OpCode.OP_CONSTANT: self.push(read_constant())
             elif instruction == OpCode.OP_NEGATE: self.push(-self.pop())
@@ -337,6 +344,50 @@ class VM:
                     pairs[key] = value
                 dict_obj = OrionDict(pairs)
                 self.push(dict_obj)
+
+    def _call_value(self, callee: Any, arg_count: int) -> bool:
+        """Helper to call a value from the stack."""
+        if isinstance(callee, OrionNativeFunction):
+            if callee.arity is not None and arg_count != callee.arity:
+                print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
+                return False
+            args = self.stack[-arg_count:]
+            self.stack = self.stack[:-arg_count-1]
+            result = callee.func(*args)
+            self.push(result)
+            return True
+        elif isinstance(callee, OrionCompiledFunction):
+            if arg_count != callee.arity:
+                print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
+                return False
+            frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1)
+            self.frames.append(frame)
+            return True
+        elif isinstance(callee, OrionComponentDef):
+            if arg_count != 0:
+                print(f"RuntimeError: Component '{callee.name}' constructor takes no arguments, but got {arg_count}.")
+                return False
+            definition = self.stack.pop()
+            instance = OrionComponentInstance(definition)
+            for prop_node in definition.properties:
+                prop_name = prop_node.name.lexeme
+                default_value = None
+                if len(prop_node.values) == 1:
+                    default_value = prop_node.values[0].literal
+                instance.fields[prop_name] = default_value
+            self.push(instance)
+            return True
+        elif isinstance(callee, OrionBoundMethod):
+            if arg_count != callee.method.arity:
+                print(f"RuntimeError: Method '{callee.method.name}' expected {callee.method.arity} arguments but got {arg_count}.")
+                return False
+            self.stack[-1 - arg_count] = callee.receiver
+            frame = CallFrame(callee.method, 0, len(self.stack) - arg_count - 1)
+            self.frames.append(frame)
+            return True
+        else:
+            print(f"RuntimeError: Can only call functions and components, not {type(callee).__name__}.")
+            return False
 
     def _is_falsey(self, value) -> bool:
         return value is None or (isinstance(value, bool) and not value)
