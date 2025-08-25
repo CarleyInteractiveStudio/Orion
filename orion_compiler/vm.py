@@ -1,5 +1,5 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionInstance, OrionList, OrionDict
+from objects import OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict
 from tokens import Token
 from dataclasses import dataclass
 from typing import Any
@@ -124,21 +124,29 @@ class VM:
                     if arg_count != 0:
                         print(f"RuntimeError: Component '{callee.name}' constructor takes no arguments, but got {arg_count}.")
                         return InterpretResult.RUNTIME_ERROR, None
-
-                    # Pop the component definition
                     definition = self.stack.pop()
                     instance = OrionComponentInstance(definition)
-
-                    # Initialize properties with default values
                     for prop_node in definition.properties:
                         prop_name = prop_node.name.lexeme
                         default_value = None
                         if len(prop_node.values) == 1:
-                            # The lexer stores the literal value in the token
                             default_value = prop_node.values[0].literal
                         instance.fields[prop_name] = default_value
-
                     self.push(instance)
+
+                elif isinstance(callee, OrionBoundMethod):
+                    if arg_count != callee.method.arity:
+                        print(f"RuntimeError: Method '{callee.method.name}' expected {callee.method.arity} arguments but got {arg_count}.")
+                        return InterpretResult.RUNTIME_ERROR, None
+
+                    # Replace the bound method on the stack with the instance it's bound to.
+                    # This makes the instance available in slot 0 for the 'this' keyword.
+                    self.stack[-1 - arg_count] = callee.receiver
+
+                    # Create a new call frame to execute the method's body.
+                    frame = CallFrame(callee.method, 0, len(self.stack) - arg_count - 1)
+                    self.frames.append(frame)
+
                 else:
                     print(f"RuntimeError: Can only call functions and components, not {type(callee).__name__}.")
                     return InterpretResult.RUNTIME_ERROR, None
@@ -217,6 +225,24 @@ class VM:
             elif instruction == OpCode.OP_GET_PROPERTY:
                 instance = self.peek(0)
                 name = read_constant()
+
+                if isinstance(instance, OrionComponentInstance):
+                    # First, check for a field with that name. Fields shadow methods.
+                    if name in instance.fields:
+                        self.pop() # Pop instance
+                        self.push(instance.fields[name])
+                        continue
+                    # If no field, check for a method.
+                    if name in instance.definition.methods:
+                        method = instance.definition.methods[name]
+                        bound_method = OrionBoundMethod(instance, method)
+                        self.pop() # Pop instance
+                        self.push(bound_method)
+                        continue
+
+                    print(f"RuntimeError: Undefined property '{name}' on component '{instance.definition.name}'.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
                 if isinstance(instance, OrionList):
                     if name == "length":
                         self.pop()
@@ -225,9 +251,12 @@ class VM:
                     else:
                         print(f"RuntimeError: Type 'list' has no property '{name}'.")
                         return InterpretResult.RUNTIME_ERROR, None
+
                 if not isinstance(instance, OrionInstance):
                     print("RuntimeError: Only instances and lists have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
+
+                # Fallback for other instance types like modules
                 value = instance.get(Token(None, name, None, 0))
                 self.pop()
                 self.push(value)

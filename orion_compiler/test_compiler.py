@@ -86,6 +86,8 @@ def main():
         ("Assign dict element to wrong type", 'var d: dict[string, number] = {"a": 1}; var s: string = d["a"];', "of type number cannot be assigned to variable of type string"),
         ("Component get non-existent prop", "component C {} var c = C(); return c.foo;", "has no property named 'foo'"),
         ("Component set wrong type", 'component C { p: 1; } var c = C(); c.p = "a";', "Cannot assign value of type string to property 'p' of type number"),
+        ("Use 'this' outside component", "function foo() { return this; }", "Cannot use 'this' outside of a component method"),
+        ("Access non-existent prop on 'this'", "component C { function get() { return this.foo; } }", "has no property named 'foo'"),
     ]
 
     valid_tests = [
@@ -109,6 +111,7 @@ def main():
         ("Get element from typed dict", 'var d: dict[string, number] = {"a": 1}; var n: number = d["a"];'),
         ("Set element in typed dict", 'var d: dict[string, number] = {}; d["a"] = 1;'),
         ("Component valid access", 'component C { p: 1; } var c = C(); c.p = 2; var x: number = c.p;'),
+        ("Component valid 'this' access", 'component C { p: 1; function f() { this.p = 2; } }'),
     ]
 
     tests_passed = 0

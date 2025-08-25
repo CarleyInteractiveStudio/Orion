@@ -32,6 +32,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             "clock": FUNCTION,
             "print": FUNCTION,
         }
+        self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.scope_depth: int = 0
         self.had_error = False
@@ -256,7 +257,11 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
                 # TODO: Check arguments match a constructor definition later
                 return self.type_map[component_name]
 
-        # TODO: Handle calls to FunctionType
+        # Handle calls to methods or functions
+        if callee_type == FUNCTION:
+            # We don't analyze return types yet, so assume ANY.
+            return ANY
+
         return ANY
 
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
@@ -316,27 +321,41 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             type_error(expr.name, f"Only components have settable properties, not type '{object_type}'.")
             self.had_error = True
         return value_type
-    def visit_this_expr(self, expr: ast.This) -> Type: return ANY
+
+    def visit_this_expr(self, expr: ast.This) -> Type:
+        if self.current_component is None:
+            type_error(expr.keyword, "Cannot use 'this' outside of a component method.")
+            self.had_error = True
+            return ANY
+        return self.current_component
+
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
         from orion_types import ComponentType, TYPE
         component_name = stmt.name.lexeme
 
-        # Register the component as a new type available for annotations
         new_component_type = ComponentType(component_name)
         self.type_map[component_name] = new_component_type
-
-        # Declare the global variable (e.g., 'Button') that holds the definition.
-        # Its type is 'type'.
         self.globals[component_name] = TYPE
 
-        # Analyze and store properties for type checking
+        original_component = self.current_component
+        self.current_component = new_component_type
+
+        # First pass: Gather properties so they are known before methods are analyzed.
         props: dict[str, Type] = {}
-        for prop_stmt in stmt.body:
-            if isinstance(prop_stmt, ast.StyleProp):
-                prop_name = prop_stmt.name.lexeme
-                props[prop_name] = self._infer_type_from_style_prop(prop_stmt)
-            # We can add analysis for Var and Function stmts inside components later
+        for member in stmt.body:
+            if isinstance(member, ast.StyleProp):
+                prop_name = member.name.lexeme
+                props[prop_name] = self._infer_type_from_style_prop(member)
         self.component_props[component_name] = props
+
+        # Second pass: Analyze methods, which can now resolve properties on 'this'.
+        for member in stmt.body:
+            if isinstance(member, ast.Function):
+                # Register the method so it can be found during type checking.
+                props[member.name.lexeme] = FUNCTION
+                self.visit_function_stmt(member)
+
+        self.current_component = original_component
 
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
@@ -433,7 +452,14 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self.had_error = False
         func_name = function_stmt.name.lexeme if function_stmt.name else "<script>"
         self.function = OrionCompiledFunction(len(function_stmt.params), Chunk(), func_name)
-        self._add_local(Token(None, "", None, 0), FUNCTION)
+
+        # In a method, slot 0 is reserved for the instance ('this').
+        # In a function, it's an empty name for the function itself.
+        if self.type == "method":
+            self._add_local(Token(None, "this", None, 0), ANY)
+        else:
+            self._add_local(Token(None, "", None, 0), FUNCTION)
+
         for param in function_stmt.params:
             self._add_local(param.name, ANY)
         self._compile_program(function_stmt.body)
@@ -563,16 +589,40 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._compile_expr(expr.object)
         self._compile_expr(expr.value)
         self._emit_bytes(OpCode.OP_SET_PROPERTY, self._make_constant(expr.name.lexeme))
-    def visit_this_expr(self, expr: ast.This): pass
-    def visit_component_stmt(self, stmt: ast.ComponentStmt):
-        # Create the runtime component definition object.
-        # For now, we only handle simple properties, not methods or var declarations inside.
-        properties = [prop for prop in stmt.body if isinstance(prop, ast.StyleProp)]
-        component_def = OrionComponentDef(stmt.name.lexeme, properties)
+    def visit_this_expr(self, expr: ast.This):
+        if self.type != 'method':
+            # This should be caught by the TypeAnalyzer, but as a safeguard.
+            print("Compile Error: Cannot use 'this' outside of a method.")
+            self.had_error = True
+            return
 
-        # Wrap it in a constant and define a global variable for it.
+        # Resolve 'this' as a local variable. It's in slot 0 for methods.
+        arg = self._resolve_local(expr.keyword)
+        self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
+
+    def visit_component_stmt(self, stmt: ast.ComponentStmt):
+        component_name = stmt.name.lexeme
+
+        # Declare the class name as a global variable. It's temporarily nil.
+        # This allows methods within the component to refer to the component's type.
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(component_name))
+
+        # Create the definition object that will hold properties and methods.
+        properties = [prop for prop in stmt.body if isinstance(prop, ast.StyleProp)]
+        component_def = OrionComponentDef(component_name, properties)
+
+        # Compile all function declarations inside the component as methods.
+        for member in stmt.body:
+            if isinstance(member, ast.Function):
+                # The 'type' of a method compilation is 'method'
+                compiler = Compiler(self, member, "method")
+                function_obj = compiler._end_compiler()
+                component_def.methods[member.name.lexeme] = function_obj
+
+        # Now, push the fully-formed component definition object onto the stack
+        # and update the global variable to point to it.
         self._emit_constant(component_def)
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
+        self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(component_name))
 
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass

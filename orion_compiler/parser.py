@@ -214,10 +214,15 @@ class Parser:
         return ast.ComponentStmt(name, body)
 
     def _component_body_statement(self) -> ast.Stmt:
-        """Parses a statement inside a component body (style prop or state block)."""
+        """Parses a statement inside a component body (method, style prop, or state block)."""
+        if self._match(TokenType.FUNCTION):
+            return self._function("method")
+
         if self._check(TokenType.IDENTIFIER) and self._check_next(TokenType.LEFT_BRACE):
             return self._state_block()
 
+        # For now, we assume anything else is a style property.
+        # We could add var/const declarations here later.
         return self._style_property()
 
     def _state_block(self) -> ast.Stmt:

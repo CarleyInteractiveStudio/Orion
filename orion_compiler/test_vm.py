@@ -114,6 +114,7 @@ def main():
         ("For Loop No Increment", "var a = 0; for (var i = 0; i < 5;) { a = a + i; i = i + 1; } return a;", 10),
         ("For Loop Scope", "var a = 10; for (var a = 0; a < 2; a = a + 1) {} return a;", 10),
         ("Component Full Lifecycle", 'component Button { text: "default"; width: 100; enabled: true;} var b1 = Button(); var b2 = Button(); b2.text = "new text"; return b1.text + " " + b2.text;', "default new text"),
+        ("Component Method Call", 'component Counter { value: 0; function increment() { this.value = this.value + 1; } } var c = Counter(); c.increment(); c.increment(); return c.value;', 2),
     ]
 
     runtime_error_tests = [

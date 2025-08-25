@@ -49,6 +49,7 @@ class OrionComponentDef(OrionObject):
     def __init__(self, name: str, properties: List['PropertyDecl']):
         self.name = name
         self.properties = properties
+        self.methods: dict = {}
 
     def __str__(self) -> str:
         return f"<component {self.name}>"
@@ -79,3 +80,12 @@ class OrionComponentInstance(OrionInstance):
 
     def __str__(self):
         return f"<{self.definition.name} instance>"
+
+class OrionBoundMethod(OrionObject):
+    """A method bound to a specific receiver instance."""
+    def __init__(self, receiver: OrionInstance, method: OrionCompiledFunction):
+        self.receiver = receiver
+        self.method = method
+
+    def __str__(self):
+        return str(self.method)
