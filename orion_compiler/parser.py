@@ -432,12 +432,18 @@ class Parser:
             values = []
             if not self._check(TokenType.RIGHT_BRACE):
                 while True:
-                    key = self._consume(TokenType.STRING, "Dictionary keys must be strings.")
-                    self._consume(TokenType.COLON, "Expect ':' after dictionary key.")
-                    value = self._expression()
+                    key_literal = None
+                    if self._match(TokenType.STRING):
+                        key_literal = self._previous().literal
+                    elif self._match(TokenType.IDENTIFIER):
+                        key_literal = self._previous().lexeme
+                    else:
+                        raise self._error(self._peek(), "Expect string or identifier as dictionary key.")
 
-                    keys.append(ast.Literal(key.literal))
-                    values.append(value)
+                    keys.append(ast.Literal(key_literal))
+
+                    self._consume(TokenType.COLON, "Expect ':' after dictionary key.")
+                    values.append(self._expression())
 
                     if not self._match(TokenType.COMMA):
                         break

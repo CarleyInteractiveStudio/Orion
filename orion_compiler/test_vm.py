@@ -112,7 +112,7 @@ def main():
     runtime_error_tests = [
         ("Index Out of Bounds (Get)", "return [1][10];", "List index 10 out of range"),
         ("Index Out of Bounds (Set)", "var a = [1]; a[10] = 2;", "List index 10 out of range"),
-        ("Component with Arguments", 'component Button {} return Button(1);', "constructor takes no arguments, but got 1"),
+        ("Component with Arguments", 'component Button {} return Button(1);', "Component constructor argument must be a dictionary"),
     ]
 
     TEST_FILE = "orion_test_file.tmp"

@@ -129,7 +129,10 @@ class VM:
 
         # Set up a new call frame and run it
         self._call_value(bound_method, 0)
-        return self._run()
+
+        # Run the VM until this new call frame is complete, and return the result.
+        result, last_value = self._run()
+        return last_value
 
     def _run(self) -> (InterpretResult, Any):
         frame = self.frames[-1]
@@ -375,11 +378,24 @@ class VM:
             self.frames.append(frame)
             return True
         elif isinstance(callee, OrionComponentDef):
-            if arg_count != 0:
-                print(f"RuntimeError: Component '{callee.name}' constructor takes no arguments, but got {arg_count}.")
+            # Arity check: 0 or 1 arguments (the props dictionary)
+            if arg_count > 1:
+                print(f"RuntimeError: Component '{callee.name}' constructor takes 0 or 1 arguments, but got {arg_count}.")
                 return False
-            definition = self.stack.pop()
+
+            props = {}
+            if arg_count == 1:
+                props_arg = self.peek(0)
+                if not isinstance(props_arg, OrionDict):
+                    print(f"RuntimeError: Component constructor argument must be a dictionary.")
+                    return False
+                props = props_arg.pairs
+                self.pop() # Pop the props dict
+
+            definition = self.stack.pop() # Pop the component definition
             instance = OrionComponentInstance(definition)
+
+            # 1. Initialize with default values from the component definition
             for prop_node in definition.properties:
                 prop_name = prop_node.name.lexeme
                 default_value = None
@@ -387,7 +403,11 @@ class VM:
                     default_value = prop_node.values[0].literal
                 instance.fields[prop_name] = default_value
 
-            # If a 'state' property exists and is a dictionary, wrap it in a proxy.
+            # 2. Override with any passed-in props
+            for key, value in props.items():
+                instance.fields[key] = value
+
+            # 3. If a 'state' property exists and is a dictionary, wrap it in a proxy.
             if "state" in instance.fields and isinstance(instance.fields["state"], OrionDict):
                 state_dict = instance.fields["state"]
                 instance.fields["state"] = StateProxy(instance, state_dict.pairs)

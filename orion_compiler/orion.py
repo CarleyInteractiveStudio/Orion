@@ -8,7 +8,7 @@ from lexer import Lexer
 from parser import Parser
 from compiler import compile as compile_source
 from vm import VM, InterpretResult
-from objects import OrionComponentInstance
+from objects import OrionComponentInstance, OrionList
 from renderer import GraphicalRenderer
 from event_dispatcher import EventDispatcher
 
@@ -20,6 +20,7 @@ class Orion:
     """
     def __init__(self):
         self.vm = VM()
+        self.scene_graph = None # Will hold the tree of rendered components
         self.had_error = False
         self.had_runtime_error = False
 
@@ -46,12 +47,53 @@ class Orion:
         # Run the script to define components, create instances, etc.
         result, _ = self.vm.interpret(main_function)
 
-        # After the script runs, check for an 'App' component to render.
         app_instance = self.vm.globals.get("App")
         if result == InterpretResult.OK and isinstance(app_instance, OrionComponentInstance):
             self._run_gui(app_instance)
         else:
             print("INFO: No 'App' component instance found or script failed. Exiting.")
+
+
+    def _build_scene_graph(self, component_instance, offset_x, offset_y):
+        """
+        Recursively traverses the component tree, calling render() on each,
+        and builds a 'scene graph' - a tree of dictionaries containing the
+        instance, its absolute coordinates, and its children.
+        This also populates the vm.draw_commands list as a side effect.
+        """
+        if "render" not in component_instance.definition.methods:
+            return None
+
+        # The component's own position is relative to its parent's offset.
+        abs_x = offset_x + component_instance.fields.get('x', 0)
+        abs_y = offset_y + component_instance.fields.get('y', 0)
+
+        commands_before = len(self.vm.draw_commands)
+        children = self.vm.call_method_on_instance(component_instance, "render")
+
+        # Adjust the coordinates of the new commands by the component's absolute position.
+        for i in range(commands_before, len(self.vm.draw_commands)):
+            command = self.vm.draw_commands[i]
+            command['x'] += abs_x
+            command['y'] += abs_y
+
+        node = {
+            "instance": component_instance,
+            "x": abs_x,
+            "y": abs_y,
+            "width": component_instance.fields.get('width', 0),
+            "height": component_instance.fields.get('height', 0),
+            "children": []
+        }
+
+        if isinstance(children, OrionList):
+            for child in children.elements:
+                if isinstance(child, OrionComponentInstance):
+                    child_node = self._build_scene_graph(child, abs_x, abs_y)
+                    if child_node:
+                        node["children"].append(child_node)
+
+        return node
 
 
     def _run_gui(self, app_instance: OrionComponentInstance):
@@ -75,20 +117,22 @@ class Orion:
                 if event.type == sdl2.SDL_QUIT:
                     running = False
 
-                dispatcher.dispatch(event, self.vm, [app_instance])
+                if self.scene_graph: # Only dispatch if we have a scene graph
+                    dispatcher.dispatch(event, self.vm, self.scene_graph)
 
-            # --- Efficient Render a frame ---
             if app_instance.dirty:
                 print("DEBUG: Dirty flag was set, re-rendering.")
                 self.vm.draw_commands = []
-                self.vm.call_method_on_instance(app_instance, "render")
+
+                # Rebuild the scene graph and populate draw commands
+                self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
 
                 renderer.process_commands(self.vm.draw_commands)
                 skia_pixels = renderer.surface.tobytes()
                 ctypes.memmove(window_surface.pixels, skia_pixels, len(skia_pixels))
 
                 window.refresh()
-                app_instance.dirty = False # Reset dirty flag after rendering
+                app_instance.dirty = False
 
             sdl2.SDL_Delay(10)
 
