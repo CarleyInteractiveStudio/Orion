@@ -70,7 +70,9 @@ class Parser:
         return ast.Var(name, type_annotation, initializer, is_const)
 
     def _statement(self) -> ast.Stmt:
-        """Parses a statement. This includes if, while, return, expression, and block statements."""
+        """Parses a statement. This includes if, while, return, for, expression, and block statements."""
+        if self._match(TokenType.FOR):
+            return self._for_statement()
         if self._match(TokenType.IF):
             return self._if_statement()
         if self._match(TokenType.RETURN):
@@ -93,6 +95,45 @@ class Parser:
             else_branch = self._statement()
 
         return ast.If(condition, then_branch, else_branch)
+
+    def _for_statement(self) -> ast.Stmt:
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'for'.")
+
+        # Initializer
+        initializer: Optional[ast.Stmt]
+        if self._match(TokenType.SEMICOLON):
+            initializer = None
+        elif self._match(TokenType.VAR):
+            initializer = self._var_declaration(is_const=False)
+        else:
+            initializer = self._expression_statement()
+
+        # Condition
+        condition: Optional[ast.Expr] = None
+        if not self._check(TokenType.SEMICOLON):
+            condition = self._expression()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after loop condition.")
+
+        # Increment
+        increment: Optional[ast.Expr] = None
+        if not self._check(TokenType.RIGHT_PAREN):
+            increment = self._expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after for clauses.")
+
+        body = self._statement()
+
+        # Desugaring
+        if increment is not None:
+            body = ast.Block(statements=[body, ast.Expression(increment)])
+
+        if condition is None:
+            condition = ast.Literal(True)
+        body = ast.While(condition, body)
+
+        if initializer is not None:
+            body = ast.Block(statements=[initializer, body])
+
+        return body
 
     def _while_statement(self) -> ast.Stmt:
         """Parses a while loop."""
@@ -174,11 +215,9 @@ class Parser:
 
     def _component_body_statement(self) -> ast.Stmt:
         """Parses a statement inside a component body (style prop or state block)."""
-        # Check if it's a state block (e.g., 'hover {')
         if self._check(TokenType.IDENTIFIER) and self._check_next(TokenType.LEFT_BRACE):
             return self._state_block()
 
-        # Otherwise, parse it as a style property
         return self._style_property()
 
     def _state_block(self) -> ast.Stmt:
@@ -200,9 +239,8 @@ class Parser:
 
         values = []
         while not self._check(TokenType.SEMICOLON) and not self._is_at_end():
-            # Special case for comma-separated values
             if len(values) > 0 and self._peek().token_type != TokenType.COMMA:
-                pass # let it be consumed
+                pass
 
             if self._peek().token_type == TokenType.COMMA:
                  self._consume(TokenType.COMMA, "Unexpected comma.")
@@ -246,17 +284,15 @@ class Parser:
 
         if self._match(TokenType.EQUAL):
             equals = self._previous()
-            value = self._assignment() # Right-associative
+            value = self._assignment()
 
             if isinstance(expr, ast.Variable):
-                name = expr.name
-                return ast.Assign(name, value)
+                return ast.Assign(expr.name, value)
             elif isinstance(expr, ast.Get):
                 return ast.Set(expr.object, expr.name, value)
             elif isinstance(expr, ast.GetSubscript):
                 return ast.SetSubscript(expr.object, expr.index, value, expr.bracket)
 
-            # If the left-hand side isn't a valid assignment target, report an error.
             self._error(equals, "Invalid assignment target.")
 
         return expr
@@ -391,8 +427,6 @@ class Parser:
             values = []
             if not self._check(TokenType.RIGHT_BRACE):
                 while True:
-                    # For now, keys must be string literals. A more advanced implementation
-                    # could allow any expression.
                     key = self._consume(TokenType.STRING, "Dictionary keys must be strings.")
                     self._consume(TokenType.COLON, "Expect ':' after dictionary key.")
                     value = self._expression()
@@ -473,7 +507,6 @@ class Parser:
 
     def _error(self, token: Token, message: str) -> ParseError:
         """Creates and returns a ParseError."""
-        # We can enhance this to report errors more gracefully.
         line = token.line
         if token.token_type == TokenType.EOF:
             print(f"[Line {line}] Error at end: {message}")
@@ -491,7 +524,6 @@ class Parser:
             if self._previous().token_type == TokenType.SEMICOLON:
                 return
 
-            # Also look for tokens that can start a new statement
             if self._peek().token_type in [
                 TokenType.FUNCTION,
                 TokenType.VAR,

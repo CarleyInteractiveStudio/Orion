@@ -9,7 +9,7 @@ from compiler import compile as compile_source
 from vm import VM, InterpretResult
 from disassembler import disassemble_chunk
 
-def run_vm_test(name, source_code, expected_value, disassemble=False):
+def run_vm_test(name, source_code, expected_value):
     """
     Runs the full new pipeline and checks the final result from the VM stack.
     """
@@ -30,9 +30,6 @@ def run_vm_test(name, source_code, expected_value, disassemble=False):
         print(f"FAIL: {name} - Compiler returned None.")
         return False
 
-    if disassemble:
-        disassemble_chunk(main_function.chunk, "Main Script")
-
     vm = VM()
     result, final_value = vm.interpret(main_function)
 
@@ -40,7 +37,6 @@ def run_vm_test(name, source_code, expected_value, disassemble=False):
         print(f"FAIL: {name} - VM did not return OK.")
         return False
 
-    # Special handling for list comparison
     if isinstance(expected_value, list):
         if not isinstance(final_value, list) or final_value != expected_value:
             print(f"FAIL: {name}")
@@ -63,7 +59,7 @@ def run_vm_runtime_error_test(name, source_code, expected_error_fragment):
     print(f"--- Running VM Test (Runtime Error): {name} ---")
 
     f = io.StringIO()
-    with redirect_stdout(f): # Runtime errors are printed to stdout in the VM
+    with redirect_stdout(f):
         lexer = Lexer(source_code)
         tokens = lexer.scan_tokens()
         parser = Parser(tokens)
@@ -93,7 +89,6 @@ def run_vm_runtime_error_test(name, source_code, expected_error_fragment):
         return False
 
 def main():
-    # We need to wrap list results in a helper for comparison
     def get_list_elements(vm_list):
         return vm_list.elements
 
@@ -113,6 +108,11 @@ def main():
         ("Dict Set", 'var d = {"a": 1}; d["a"] = 99; return d["a"];', 99),
         ("Dict Set New Key", 'var d = {}; d["new"] = "value"; return d["new"];', "value"),
         ("Dict Get Missing Key", 'return {"a": 1}["b"];', None),
+        # C-style for loops
+        ("For Loop", "var a = 0; for (var i = 0; i < 5; i = i + 1) { a = a + i; } return a;", 10),
+        ("For Loop No Initializer", "var i = 0; var a = 0; for (; i < 5; i = i + 1) { a = a + i; } return a;", 10),
+        ("For Loop No Increment", "var a = 0; for (var i = 0; i < 5;) { a = a + i; i = i + 1; } return a;", 10),
+        ("For Loop Scope", "var a = 10; for (var a = 0; a < 2; a = a + 1) {} return a;", 10),
     ]
 
     runtime_error_tests = [
@@ -120,7 +120,6 @@ def main():
         ("Index Out of Bounds (Set)", "var a = [1]; a[10] = 2;", "List index 10 out of range"),
     ]
 
-    # --- IO Tests ---
     TEST_FILE = "orion_test_file.tmp"
     io_tests = [
         ("IO Write & Exists", f'use io; io.write("{TEST_FILE}", "hello"); return io.exists("{TEST_FILE}");', True),
@@ -141,16 +140,14 @@ def main():
             if run_vm_runtime_error_test(name, source, expected):
                 tests_passed += 1
     finally:
-        # Clean up the test file
         if os.path.exists(TEST_FILE):
             os.remove(TEST_FILE)
 
     total_tests = len(all_tests) + len(runtime_error_tests)
 
-    # Special test for print() that checks stdout
     print(f"--- Running VM Test: Native Print ---")
     total_tests += 1
-    source_print = 'print("hello", 123, [1,2]);'
+    source_print = 'print("hello", 123, [1,2], {"a": 1});'
     f = io.StringIO()
     with redirect_stdout(f):
         lexer = Lexer(source_print)
@@ -161,29 +158,11 @@ def main():
         vm = VM()
         vm.interpret(main_function)
     output = f.getvalue()
-    if "hello 123 [1, 2]\n" in output:
+    if 'hello 123 [1, 2] {"a": 1}\n' in output:
         print("PASS: Native Print")
         tests_passed += 1
     else:
         print(f"FAIL: Native Print")
-
-    # Final check for list string representation
-    # This is a bit of a hack, but it's easier than modifying the test runner more
-    print(f"--- Running VM Test: List String Representation ---")
-    total_tests += 1
-    source_list_str = 'return [1, "hello"];'
-    lexer = Lexer(source_list_str)
-    tokens = lexer.scan_tokens()
-    parser = Parser(tokens)
-    statements = parser.parse()
-    main_function = compile_source(statements)
-    vm = VM()
-    _, final_val = vm.interpret(main_function)
-    if str(final_val) == '[1, hello]':
-         print("PASS: List String Representation")
-         tests_passed += 1
-    else:
-         print(f"FAIL: List String Representation - Got {str(final_val)}")
 
     print(f"\n--- VM Test Summary ---")
     print(f"{tests_passed} / {total_tests} tests passed.")

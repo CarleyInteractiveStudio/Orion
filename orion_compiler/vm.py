@@ -43,13 +43,12 @@ class VM:
                 with open(path, 'r') as f:
                     return f.read()
             except FileNotFoundError:
-                # In the future, we could have a proper error system
                 return None
 
         def native_io_write(path, content):
             with open(path, 'w') as f:
                 f.write(str(content))
-            return None # Write returns nil
+            return None
 
         def native_io_append(path, content):
             with open(path, 'a') as f:
@@ -68,26 +67,24 @@ class VM:
         self.native_modules["io"] = io_module
 
     def interpret(self, main_function: OrionCompiledFunction) -> InterpretResult:
-        # Reset stack and frames for a new run
         self.stack = []
         self.frames = []
-
-        # Set up the initial CallFrame for the main script body
         self.stack.append(main_function)
         frame = CallFrame(main_function, 0, 0)
         self.frames.append(frame)
-
         return self._run()
 
     def _run(self) -> (InterpretResult, Any):
         frame = self.frames[-1]
 
         def read_byte():
+            nonlocal frame
             byte = frame.function.chunk.code[frame.ip]
             frame.ip += 1
             return byte
 
         def read_short():
+            nonlocal frame
             frame.ip += 2
             return (frame.function.chunk.code[frame.ip - 2] << 8) | frame.function.chunk.code[frame.ip - 1]
 
@@ -102,9 +99,6 @@ class VM:
                 self.frames.pop()
                 if not self.frames:
                     return InterpretResult.OK, result
-
-                # Discard the function and its args from the stack
-                # and push the result for the caller.
                 self.stack = self.stack[:frame.slots_offset]
                 self.push(result)
                 frame = self.frames[-1]
@@ -112,25 +106,18 @@ class VM:
             elif instruction == OpCode.OP_CALL:
                 arg_count = read_byte()
                 callee = self.peek(arg_count)
-
                 if isinstance(callee, OrionNativeFunction):
-                    # For variadic functions, arity check is skipped if arity is None
                     if callee.arity is not None and arg_count != callee.arity:
                         print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
                         return InterpretResult.RUNTIME_ERROR, None
-
-                    # Get args, pop them and the function from the stack
                     args = self.stack[-arg_count:]
                     self.stack = self.stack[:-arg_count-1]
-
                     result = callee.func(*args)
                     self.push(result)
-
                 elif isinstance(callee, OrionCompiledFunction):
                     if arg_count != callee.arity:
                         print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
                         return InterpretResult.RUNTIME_ERROR, None
-
                     frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1)
                     self.frames.append(frame)
                 else:
@@ -189,17 +176,12 @@ class VM:
 
             elif instruction == OpCode.OP_USE:
                 module_name = read_constant()
-
-                # Check for native modules first
                 if module_name in self.native_modules:
                     namespace = OrionInstance()
                     namespace.fields = self.native_modules[module_name]
                     self.push(namespace)
                     continue
-
-                # Fallback to file-based modules
                 file_path = f"orion_compiler/{module_name}.orion"
-
                 from orion import Orion
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
@@ -207,35 +189,28 @@ class VM:
                 except FileNotFoundError:
                     print(f"RuntimeError: Module file not found: '{file_path}'")
                     return InterpretResult.RUNTIME_ERROR, None
-
                 module_runner = Orion()
                 module_runner.run(source)
-                module_globals = module_runner.vm.globals
-
                 namespace = OrionInstance()
-                namespace.fields = module_globals
+                namespace.fields = module_runner.vm.globals
                 self.push(namespace)
 
             elif instruction == OpCode.OP_GET_PROPERTY:
                 instance = self.peek(0)
                 name = read_constant()
-
                 if isinstance(instance, OrionList):
                     if name == "length":
-                        self.pop() # Pop the list
+                        self.pop()
                         self.push(len(instance.elements))
                         continue
                     else:
-                        print(f"RuntimeError: Lists do not have a property named '{name}'.")
+                        print(f"RuntimeError: Type 'list' has no property '{name}'.")
                         return InterpretResult.RUNTIME_ERROR, None
-
                 if not isinstance(instance, OrionInstance):
                     print("RuntimeError: Only instances and lists have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
-
-                value = instance.get(Token(None, name, None, 0)) # Dummy token
-
-                self.pop() # Pop the instance
+                value = instance.get(Token(None, name, None, 0))
+                self.pop()
                 self.push(value)
 
             elif instruction == OpCode.OP_SET_PROPERTY:
@@ -243,16 +218,12 @@ class VM:
                 if isinstance(instance, OrionList):
                     print("RuntimeError: Cannot set properties on a list.")
                     return InterpretResult.RUNTIME_ERROR, None
-
                 if not isinstance(instance, OrionInstance):
                     print("RuntimeError: Only instances have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
-
                 name = read_constant()
                 value = self.peek(0)
                 instance.set(Token(None, name, None, 0), value)
-
-                # Pop the value, then the instance, then push the value back
                 self.pop()
                 self.pop()
                 self.push(value)
@@ -261,14 +232,12 @@ class VM:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]
                 self.stack = self.stack[:-item_count]
-
                 list_obj = OrionList(elements)
                 self.push(list_obj)
 
             elif instruction == OpCode.OP_GET_SUBSCRIPT:
                 index = self.pop()
                 collection = self.pop()
-
                 if isinstance(collection, OrionList):
                     if not isinstance(index, int):
                         print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
@@ -282,7 +251,7 @@ class VM:
                     if not isinstance(index, (str, int, bool, type(None))):
                          print(f"RuntimeError: Dictionary key must be a valid hashable type.")
                          return InterpretResult.RUNTIME_ERROR, None
-                    self.push(collection.pairs.get(index)) # .get() returns None for missing keys
+                    self.push(collection.pairs.get(index))
                 else:
                     print("RuntimeError: Object is not subscriptable.")
                     return InterpretResult.RUNTIME_ERROR, None
@@ -291,7 +260,6 @@ class VM:
                 value = self.pop()
                 index = self.pop()
                 collection = self.pop()
-
                 if isinstance(collection, OrionList):
                     if not isinstance(index, int):
                         print(f"RuntimeError: List index must be an integer.")
@@ -318,12 +286,9 @@ class VM:
                 for _ in range(pair_count):
                     value = self.pop()
                     key = self.pop()
-                    # A more robust implementation would check key hashability
                     pairs[key] = value
-
                 dict_obj = OrionDict(pairs)
                 self.push(dict_obj)
-
 
     def _is_falsey(self, value) -> bool:
         return value is None or (isinstance(value, bool) and not value)

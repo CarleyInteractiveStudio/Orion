@@ -167,7 +167,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
 
             if base_type_name == "list":
                 if len(params) != 1:
-                    print("Type Error: List type expects 1 type parameter.") # TODO: Better error reporting
+                    print("Type Error: List type expects 1 type parameter.")
                     self.had_error = True
                     return ANY_LIST
                 return ListType(params[0])
@@ -201,12 +201,9 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if isinstance(target, ListType) and isinstance(value, ListType):
             return self._is_assignable(target.element_type, value.element_type)
 
-        # Dictionaries are invariant, with the exception that an empty dict
-        # (inferred as dict[any, any]) can be assigned to any dict type.
         if isinstance(target, DictType) and isinstance(value, DictType):
             if value.key_type == ANY and value.value_type == ANY:
-                return True # This is the empty dictionary case.
-
+                return True
             key_match = self._is_assignable(target.key_type, value.key_type)
             value_match = self._is_assignable(target.value_type, value.value_type)
             return key_match and value_match
@@ -221,20 +218,24 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_get_expr(self, expr: ast.Get) -> Type:
         object_type = self._analyze_expr(expr.object)
         if isinstance(object_type, ListType):
-            if expr.name.lexeme == "length": return NUMBER
-            type_error(expr.name, f"Lists do not have a property named '{expr.name.lexeme}'.")
+            if expr.name.lexeme == "length":
+                return NUMBER
+            type_error(expr.name, f"Type 'list' has no property '{expr.name.lexeme}'.")
             self.had_error = True
             return ANY
         if object_type == MODULE:
             return ANY
-        type_error(expr.name, f"Only lists and modules have properties.")
+
+        type_error(expr.name, f"Only lists and modules have properties, not type '{object_type}'.")
         self.had_error = True
         return ANY
+
     def visit_set_expr(self, expr: ast.Set) -> Type:
         object_type = self._analyze_expr(expr.object)
         if isinstance(object_type, ListType):
             type_error(expr.name, "Cannot set properties on a list.")
             self.had_error = True
+
         return self._analyze_expr(expr.value)
     def visit_this_expr(self, expr: ast.This) -> Type: return ANY
     def visit_component_stmt(self, stmt: ast.ComponentStmt): pass
@@ -247,12 +248,9 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_list_literal_expr(self, expr: ast.ListLiteral) -> Type:
         if not expr.elements:
             return ListType(ANY)
-
         element_types = [self._analyze_expr(e) for e in expr.elements]
-        # For now, if all types are the same, use that type. Otherwise, ANY.
-        # A more advanced checker would find a common supertype.
         first_type = element_types[0]
-        if all(t == first_type for t in element_types):
+        if all(self._is_assignable(first_type, t) for t in element_types):
             return ListType(first_type)
         else:
             return ListType(ANY)
@@ -260,20 +258,14 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_dict_literal_expr(self, expr: ast.DictLiteral) -> Type:
         if not expr.keys:
             return DictType(ANY, ANY)
-
         key_types = [self._analyze_expr(k) for k in expr.keys]
         value_types = [self._analyze_expr(v) for v in expr.values]
-
-        # Check that all keys are strings for now
         for key_type in key_types:
             if key_type not in (STRING, ANY):
-                # This needs a token to be more useful
                 print("Type Error: Dictionary keys must be strings.")
                 self.had_error = True
-
-        # Infer common value type
         first_value_type = value_types[0]
-        if all(t == first_value_type for t in value_types):
+        if all(self._is_assignable(first_value_type, t) for t in value_types):
             return DictType(STRING, first_value_type)
         else:
             return DictType(STRING, ANY)
@@ -281,7 +273,6 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_get_subscript_expr(self, expr: ast.GetSubscript) -> Type:
         object_type = self._analyze_expr(expr.object)
         index_type = self._analyze_expr(expr.index)
-
         if isinstance(object_type, ListType):
             if not self._is_assignable(NUMBER, index_type):
                 type_error(expr.bracket, f"List index must be a number, not type {index_type}.")
@@ -301,7 +292,6 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         object_type = self._analyze_expr(expr.object)
         index_type = self._analyze_expr(expr.index)
         value_type = self._analyze_expr(expr.value)
-
         if isinstance(object_type, ListType):
             if not self._is_assignable(NUMBER, index_type):
                 type_error(expr.bracket, f"List index must be a number, not type {index_type}.")
@@ -319,7 +309,6 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         elif object_type != ANY:
             type_error(expr.bracket, f"Object of type {object_type} is not subscriptable.")
             self.had_error = True
-
         return value_type
 
 class Compiler(ast.ExprVisitor, ast.StmtVisitor):

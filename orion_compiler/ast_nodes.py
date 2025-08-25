@@ -49,7 +49,7 @@ class ExprVisitor(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def visit_list_literal_expr(self, expr: 'ListLiteral'):
+    def visit_this_expr(self, expr: 'This'):
         raise NotImplementedError
 
     @abstractmethod
@@ -204,7 +204,7 @@ class Logical(Expr):
 @dataclass
 class Call(Expr):
     callee: Expr
-    paren: Token  # The closing parenthesis, for error reporting location
+    paren: Token
     arguments: List[Expr]
 
     def accept(self, visitor: ExprVisitor):
@@ -250,7 +250,7 @@ class ListLiteral(Expr):
 class GetSubscript(Expr):
     object: Expr
     index: Expr
-    bracket: Token # For error reporting
+    bracket: Token
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_get_subscript_expr(self)
@@ -261,7 +261,7 @@ class SetSubscript(Expr):
     object: Expr
     index: Expr
     value: Expr
-    bracket: Token # For error reporting
+    bracket: Token
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_set_subscript_expr(self)
@@ -372,7 +372,7 @@ class StyleProp(Stmt):
 @dataclass
 class StateBlock(Stmt):
     name: Token
-    body: List[StyleProp] # For now, only style props are allowed inside
+    body: List[StyleProp]
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_state_block_stmt(self)
@@ -381,7 +381,7 @@ class StateBlock(Stmt):
 @dataclass
 class ComponentStmt(Stmt):
     name: Token
-    body: List[Stmt] # Can contain StyleProp or StateBlock nodes
+    body: List[Stmt]
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_component_stmt(self)
