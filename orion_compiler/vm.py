@@ -1,5 +1,5 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict
+from objects import OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
 from tokens import Token
 from dataclasses import dataclass
 from typing import Any
@@ -386,6 +386,12 @@ class VM:
                 if len(prop_node.values) == 1:
                     default_value = prop_node.values[0].literal
                 instance.fields[prop_name] = default_value
+
+            # If a 'state' property exists and is a dictionary, wrap it in a proxy.
+            if "state" in instance.fields and isinstance(instance.fields["state"], OrionDict):
+                state_dict = instance.fields["state"]
+                instance.fields["state"] = StateProxy(instance, state_dict.pairs)
+
             self.push(instance)
             return True
         elif isinstance(callee, OrionBoundMethod):

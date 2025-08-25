@@ -77,6 +77,7 @@ class OrionComponentInstance(OrionInstance):
     def __init__(self, definition: OrionComponentDef):
         super().__init__()
         self.definition = definition
+        self.dirty = True # Start as dirty to trigger initial render
 
     def __str__(self):
         return f"<{self.definition.name} instance>"
@@ -89,3 +90,19 @@ class OrionBoundMethod(OrionObject):
 
     def __str__(self):
         return str(self.method)
+
+class StateProxy(OrionInstance):
+    """
+    A wrapper for a component's state dictionary that marks the component
+    as dirty when a property is set.
+    """
+    def __init__(self, owner: OrionComponentInstance, initial_state: dict):
+        super().__init__()
+        self.owner = owner
+        self.fields = initial_state
+
+    def set(self, name: Token, value: Any):
+        """Sets a value and marks the owner component as dirty."""
+        super().set(name, value)
+        self.owner.dirty = True
+        print(f"DEBUG: State set, {self.owner.definition.name} is now dirty.")

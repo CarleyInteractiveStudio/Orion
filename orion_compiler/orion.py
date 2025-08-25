@@ -75,18 +75,21 @@ class Orion:
                 if event.type == sdl2.SDL_QUIT:
                     running = False
 
-                # Pass other events to the dispatcher
                 dispatcher.dispatch(event, self.vm, [app_instance])
 
-            # --- Render a frame ---
-            self.vm.draw_commands = []
-            self.vm.call_method_on_instance(app_instance, "render")
+            # --- Efficient Render a frame ---
+            if app_instance.dirty:
+                print("DEBUG: Dirty flag was set, re-rendering.")
+                self.vm.draw_commands = []
+                self.vm.call_method_on_instance(app_instance, "render")
 
-            renderer.process_commands(self.vm.draw_commands)
-            skia_pixels = renderer.surface.tobytes()
-            ctypes.memmove(window_surface.pixels, skia_pixels, len(skia_pixels))
+                renderer.process_commands(self.vm.draw_commands)
+                skia_pixels = renderer.surface.tobytes()
+                ctypes.memmove(window_surface.pixels, skia_pixels, len(skia_pixels))
 
-            window.refresh()
+                window.refresh()
+                app_instance.dirty = False # Reset dirty flag after rendering
+
             sdl2.SDL_Delay(10)
 
         sdl2.ext.quit()
