@@ -62,6 +62,9 @@ class OpCode(IntEnum):
     OP_CLASS = 31
     OP_METHOD = 32
 
+    # --- Modules ---
+    OP_IMPORT_NATIVE = 33
+
     # --- End of Execution ---
     # OP_RETURN now serves this purpose
 

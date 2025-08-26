@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 import time
 import os
+import math
+import json
+import requests
 
 @dataclass
 class CallFrame:
@@ -40,6 +43,10 @@ class VM:
         self.native_modules: dict = {}
         self.draw_commands: list = []
         self._init_io_module()
+        self._init_str_module()
+        self._init_math_module()
+        self._init_json_module()
+        self._init_http_module()
         self._init_draw_module()
 
     def _define_native(self, name: str, arity: int, func):
@@ -82,6 +89,128 @@ class VM:
             "exists": OrionNativeFunction(1, native_io_exists),
         }
         self.native_modules["io"] = io_module
+
+    def _init_str_module(self):
+        def native_string_length(s):
+            if not isinstance(s, str): return 0
+            return len(s)
+
+        def native_string_to_upper(s):
+            if not isinstance(s, str): return None
+            return s.upper()
+
+        def native_string_to_lower(s):
+            if not isinstance(s, str): return None
+            return s.lower()
+
+        def native_string_contains(s, sub):
+            if not isinstance(s, str) or not isinstance(sub, str): return False
+            return sub in s
+
+        def native_string_split(s, delimiter):
+            if not isinstance(s, str) or not isinstance(delimiter, str): return None
+            return OrionList(s.split(delimiter))
+
+        def native_string_join(l, union):
+            if not isinstance(l, OrionList) or not isinstance(union, str): return None
+            return union.join(map(str, l.elements))
+
+        str_module = {
+            "length": OrionNativeFunction(1, native_string_length),
+            "toUpperCase": OrionNativeFunction(1, native_string_to_upper),
+            "toLowerCase": OrionNativeFunction(1, native_string_to_lower),
+            "contains": OrionNativeFunction(2, native_string_contains),
+            "split": OrionNativeFunction(2, native_string_split),
+            "join": OrionNativeFunction(2, native_string_join),
+        }
+        self.native_modules["str"] = str_module
+
+    def _init_math_module(self):
+        def native_math_sqrt(n):
+            if not isinstance(n, (int, float)): return None
+            return math.sqrt(n)
+
+        def native_math_pow(base, exp):
+            if not isinstance(base, (int, float)) or not isinstance(exp, (int, float)): return None
+            return math.pow(base, exp)
+
+        def native_math_sin(n):
+            if not isinstance(n, (int, float)): return None
+            return math.sin(n)
+
+        def native_math_cos(n):
+            if not isinstance(n, (int, float)): return None
+            return math.cos(n)
+
+        def native_math_tan(n):
+            if not isinstance(n, (int, float)): return None
+            return math.tan(n)
+
+        math_module = {
+            "PI": math.pi,
+            "sqrt": OrionNativeFunction(1, native_math_sqrt),
+            "pow": OrionNativeFunction(2, native_math_pow),
+            "sin": OrionNativeFunction(1, native_math_sin),
+            "cos": OrionNativeFunction(1, native_math_cos),
+            "tan": OrionNativeFunction(1, native_math_tan),
+        }
+        self.native_modules["math"] = math_module
+
+    def _init_json_module(self):
+        def _python_to_orion(value):
+            if isinstance(value, dict):
+                return OrionDict({k: _python_to_orion(v) for k, v in value.items()})
+            if isinstance(value, list):
+                return OrionList([_python_to_orion(v) for v in value])
+            return value
+
+        def _orion_to_python(value):
+            if isinstance(value, OrionDict):
+                return {k: _orion_to_python(v) for k, v in value.pairs.items()}
+            if isinstance(value, OrionList):
+                return [_orion_to_python(v) for v in value.elements]
+            if isinstance(value, OrionInstance): # General instance
+                return {k: _orion_to_python(v) for k, v in value.fields.items()}
+            return value
+
+        def native_json_parse(s):
+            if not isinstance(s, str): return None
+            try:
+                data = json.loads(s)
+                return _python_to_orion(data)
+            except json.JSONDecodeError:
+                return None
+
+        def native_json_stringify(value):
+            try:
+                py_obj = _orion_to_python(value)
+                return json.dumps(py_obj)
+            except TypeError:
+                return None
+
+        json_module = {
+            "parse": OrionNativeFunction(1, native_json_parse),
+            "stringify": OrionNativeFunction(1, native_json_stringify),
+        }
+        self.native_modules["json"] = json_module
+
+    def _init_http_module(self):
+        def native_http_get(url):
+            if not isinstance(url, str):
+                return None
+            try:
+                response = requests.get(url, timeout=5) # 5 second timeout
+                if response.status_code == 200:
+                    return response.text
+                else:
+                    return None
+            except requests.exceptions.RequestException:
+                return None
+
+        http_module = {
+            "get": OrionNativeFunction(1, native_http_get),
+        }
+        self.native_modules["http"] = http_module
 
     def _init_draw_module(self):
         def native_draw_box(options):
@@ -276,6 +405,17 @@ class VM:
                 klass = self.peek(1)
                 klass.methods[method_name] = method
                 self.pop() # Pop the method, leave the class on the stack
+            elif instruction == OpCode.OP_IMPORT_NATIVE:
+                module_name = read_constant()
+                if module_name not in self.native_modules:
+                    print(f"RuntimeError: Native module '{module_name}' not found.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                native_module = self.native_modules[module_name]
+                module_instance = OrionInstance()
+                module_instance.fields = native_module.copy() # Shallow copy is fine
+
+                self.push(module_instance)
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]

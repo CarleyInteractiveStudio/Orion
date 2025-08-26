@@ -22,7 +22,13 @@ def _find_module(module_name: str) -> str | None:
 
 # --- Top-Level Compile Function ---
 def compile(source: str) -> OrionCompiledFunction | None:
-    type_analyzer = TypeAnalyzer()
+    # This is a bit of a hack to get native module definitions to the analyzer.
+    # In a larger system, this would come from a shared configuration.
+    from vm import VM
+    temp_vm = VM()
+    native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
+
+    type_analyzer = TypeAnalyzer(native_module_specs)
     module_cache = {}
     try:
         main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
@@ -71,11 +77,12 @@ class Local:
     type: Type
 
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
-    def __init__(self):
+    def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
         self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE }
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
+        self.native_modules = native_module_specs or {}
         self.scope_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, }
@@ -211,7 +218,16 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             component_name = object_type.name; prop_name = expr.name.lexeme
             if component_name in self.component_props and prop_name in self.component_props[component_name]: return self.component_props[component_name][prop_name]
             type_error(expr.name, f"Component '{component_name}' has no property named '{prop_name}'."); self.had_error = True; return ANY
-        if object_type == MODULE or object_type == ANY: return ANY
+
+        if object_type == MODULE:
+            module_name = expr.object.name.lexeme
+            member_name = expr.name.lexeme
+            if module_name in self.native_modules and member_name in self.native_modules[module_name]:
+                return self.native_modules[module_name][member_name] # Should be FUNCTION
+            type_error(expr.name, f"Module '{module_name}' has no member named '{member_name}'."); self.had_error = True; return ANY
+
+        if object_type == ANY: return ANY
+
         type_error(expr.name, f"Only components, lists, and modules have properties, not type '{object_type}'."); self.had_error = True
         return ANY
     def visit_set_expr(self, expr: ast.Set) -> Type:
@@ -488,24 +504,15 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
     def visit_use_stmt(self, stmt: ast.UseStmt):
         module_name = stmt.name.lexeme
-        module_path = _find_module(module_name)
-        if module_path is None:
-            print(f"Compile Error: Module '{module_name}' not found."); self.had_error = True; return
-        with open(module_path, 'r') as f: source = f.read()
-        module_function = _compile_module_source(source, module_name, self.type_analyzer, self.module_cache)
-        if module_function is None:
-            self.had_error = True; print(f"Compile Error: Could not compile module '{module_name}'."); return
-        self._emit_constant(module_function)
-        # We need a way to get the module's exports into a namespace object.
-        # This is a placeholder implementation.
-        self._emit_bytes(OpCode.OP_CALL, 0) # This will execute the module code
-        self._emit_byte(OpCode.OP_POP) # Discard the nil return value
-        # This doesn't create a namespace object yet. That's a TODO.
-        # For now, it just pollutes the global namespace.
-        # Let's bind the alias to nil for now.
+
+        # Emit code to load the module object
+        module_name_constant = self._make_constant(module_name)
+        self._emit_bytes(OpCode.OP_IMPORT_NATIVE, module_name_constant)
+
+        # Define a global variable for the module
         bind_name = stmt.alias.lexeme if stmt.alias else module_name
-        self._emit_byte(OpCode.OP_NIL)
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(bind_name))
+        bind_name_constant = self._make_constant(bind_name)
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, bind_name_constant)
     def visit_list_literal_expr(self, expr: ast.ListLiteral):
         for element in expr.elements: self._compile_expr(element)
         self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements))
