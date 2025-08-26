@@ -256,6 +256,22 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
+
+    def visit_class_stmt(self, stmt: ast.Class):
+        from orion_types import ClassType, CLASS
+        class_name = stmt.name.lexeme
+        new_class_type = ClassType(class_name)
+        self.type_map[class_name] = new_class_type
+        self.globals[class_name] = CLASS # The class name itself is a "type" value
+
+        # Analyze methods
+        self._begin_scope()
+        # In a real implementation, we'd add 'this' to the scope
+        # self._add_local(Token(TokenType.THIS, 'this', None, stmt.name.line), new_class_type)
+        for method in stmt.methods:
+            self.visit_function_stmt(method)
+        self._end_scope()
+
     def visit_use_stmt(self, stmt: ast.UseStmt):
         module_name = stmt.alias.lexeme if stmt.alias else stmt.name.lexeme
         self.globals[module_name] = MODULE
@@ -319,6 +335,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self.type_analyzer = type_analyzer
         self.module_cache = module_cache
         self.type = function_type
+        if function_stmt.name and function_stmt.name.lexeme == "init":
+            self.type = "initializer"
+
         self.locals: list[Local] = []
         self.scope_depth: int = 0
         self.had_error = False
@@ -340,7 +359,12 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def _emit_bytes(self, byte1: int, byte2: int):
         self._emit_byte(byte1); self._emit_byte(byte2)
     def _emit_return(self):
-        self._emit_byte(OpCode.OP_NIL); self._emit_byte(OpCode.OP_RETURN)
+        if self.type == "initializer":
+            self._emit_bytes(OpCode.OP_GET_LOCAL, 0) # 'this' is in slot 0
+        else:
+            self._emit_byte(OpCode.OP_NIL)
+        self._emit_byte(OpCode.OP_RETURN)
+
     def _end_compiler(self) -> OrionCompiledFunction:
         self._emit_return(); return self.function
     def _make_constant(self, value) -> int: return self._current_chunk().add_constant(value)
@@ -402,8 +426,16 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         for arg in expr.arguments: self._compile_expr(arg)
         self._emit_bytes(OpCode.OP_CALL, len(expr.arguments))
     def visit_return_stmt(self, stmt: ast.Return):
-        if stmt.value: self._compile_expr(stmt.value); self._emit_byte(OpCode.OP_RETURN)
-        else: self._emit_byte(OpCode.OP_NIL); self._emit_byte(OpCode.OP_RETURN)
+        if self.type == "initializer":
+            if stmt.value:
+                print("Compile Error: Cannot return a value from an initializer.")
+                self.had_error = True
+            self._emit_return() # Emits GET_LOCAL 0 and RETURN
+        elif stmt.value:
+            self._compile_expr(stmt.value)
+            self._emit_byte(OpCode.OP_RETURN)
+        else:
+            self._emit_return() # Emits NIL and RETURN
     def _begin_scope(self): self.scope_depth += 1
     def _end_scope(self):
         self.scope_depth -= 1
@@ -489,3 +521,23 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys))
     def visit_for_stmt(self, stmt: ast.Stmt): pass
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
+
+    def visit_class_stmt(self, stmt: ast.Class):
+        class_name = stmt.name.lexeme
+        name_constant = self._make_constant(class_name)
+        self._emit_bytes(OpCode.OP_CLASS, name_constant)
+
+        # Compile methods
+        for method_node in stmt.methods:
+            compiler = Compiler(self, method_node, "method", self.type_analyzer, self.module_cache)
+            function_obj = compiler._end_compiler()
+
+            # Add the compiled function to the constant pool
+            method_constant_idx = self._make_constant(function_obj)
+            self._emit_bytes(OpCode.OP_CONSTANT, method_constant_idx)
+
+            # Add the method name to the constant pool
+            method_name_idx = self._make_constant(method_node.name.lexeme)
+            self._emit_bytes(OpCode.OP_METHOD, method_name_idx)
+
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, name_constant)

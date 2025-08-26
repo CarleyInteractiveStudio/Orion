@@ -34,6 +34,8 @@ class Parser:
         If a syntax error is found, it synchronizes and returns None.
         """
         try:
+            if self._match(TokenType.CLASS):
+                return self._class_declaration()
             if self._match(TokenType.MODULE):
                 return self._module_statement()
             if self._match(TokenType.USE):
@@ -200,6 +202,18 @@ class Parser:
 
         self._consume(TokenType.SEMICOLON, "Expect ';' after use statement.")
         return ast.UseStmt(name, alias)
+
+    def _class_declaration(self) -> ast.Stmt:
+        """Parses a class declaration."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect class name.")
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before class body.")
+
+        methods = []
+        while not self._check(TokenType.RIGHT_BRACE) and not self._is_at_end():
+            methods.append(self._function("method"))
+
+        self._consume(TokenType.RIGHT_BRACE, "Expect '}' after class body.")
+        return ast.Class(name, methods)
 
     def _component_declaration(self) -> ast.Stmt:
         """Parses a component declaration."""

@@ -1,5 +1,5 @@
 from bytecode import Chunk, OpCode
-from objects import OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
+from objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
 from tokens import Token, TokenType
 from lexer import Lexer
 from dataclasses import dataclass
@@ -210,6 +210,21 @@ class VM:
             elif instruction == OpCode.OP_GET_PROPERTY:
                 instance = self.peek(0)
                 name = read_constant()
+                if isinstance(instance, OrionClassInstance):
+                    if name in instance.fields:
+                        self.pop() # pop instance
+                        self.push(instance.fields[name])
+                        continue
+
+                    if name in instance.klass.methods:
+                        method = instance.klass.methods[name]
+                        bound_method = OrionBoundMethod(instance, method)
+                        self.pop() # pop instance
+                        self.push(bound_method)
+                        continue
+
+                    print(f"RuntimeError: Undefined property '{name}' on '{instance.klass.name}'.")
+                    return InterpretResult.RUNTIME_ERROR, None
                 if isinstance(instance, OrionComponentInstance):
                     if name in instance.fields:
                         self.pop()
@@ -251,6 +266,16 @@ class VM:
                 self.pop()
                 self.pop()
                 self.push(value)
+            elif instruction == OpCode.OP_CLASS:
+                class_name = read_constant()
+                klass = OrionClass(class_name)
+                self.push(klass)
+            elif instruction == OpCode.OP_METHOD:
+                method_name = read_constant()
+                method = self.peek(0)
+                klass = self.peek(1)
+                klass.methods[method_name] = method
+                self.pop() # Pop the method, leave the class on the stack
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]
@@ -325,6 +350,26 @@ class VM:
                 return False
             frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1)
             self.frames.append(frame)
+            return True
+        elif isinstance(callee, OrionClass):
+            # Create the instance and place it on the stack, replacing the class.
+            instance = OrionClassInstance(callee)
+            self.stack[-1 - arg_count] = instance
+
+            # Look for an initializer.
+            if "init" in callee.methods:
+                initializer = callee.methods["init"]
+                if arg_count != initializer.arity:
+                    print(f"RuntimeError: Expected {initializer.arity} arguments for init but got {arg_count}.")
+                    return False
+                # Call the initializer.
+                frame = CallFrame(initializer, 0, len(self.stack) - arg_count - 1)
+                self.frames.append(frame)
+            elif arg_count != 0:
+                # No initializer, so no arguments are allowed.
+                print(f"RuntimeError: Expected 0 arguments but got {arg_count}.")
+                return False
+
             return True
         elif isinstance(callee, OrionComponentDef):
             if arg_count > 1:

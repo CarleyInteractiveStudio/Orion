@@ -40,6 +40,7 @@ class TokenType(Enum):
     AND = auto()
     AS = auto()
     BOOL = auto()
+    CLASS = auto()
     COMPONENT = auto()
     CONST = auto()
     ELSE = auto()
@@ -86,6 +87,7 @@ keywords = {
     "and": TokenType.AND,
     "as": TokenType.AS,
     "bool": TokenType.BOOL,
+    "class": TokenType.CLASS,
     "component": TokenType.COMPONENT,
     "const": TokenType.CONST,
     "else": TokenType.ELSE,

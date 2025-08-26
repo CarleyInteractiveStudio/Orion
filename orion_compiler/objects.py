@@ -44,6 +44,15 @@ class OrionCompiledFunction(OrionObject):
     def __str__(self) -> str:
         return f"<fn {self.name}>"
 
+class OrionClass(OrionObject):
+    """Represents a class definition at runtime."""
+    def __init__(self, name: str):
+        self.name = name
+        self.methods = {}
+
+    def __str__(self) -> str:
+        return f"<class {self.name}>"
+
 class OrionComponentDef(OrionObject):
     """Represents a component's definition (its 'class')."""
     def __init__(self, name: str, properties: List['PropertyDecl']):
@@ -81,6 +90,15 @@ class OrionComponentInstance(OrionInstance):
 
     def __str__(self):
         return f"<{self.definition.name} instance>"
+
+class OrionClassInstance(OrionInstance):
+    """Represents an instance of a user-defined class."""
+    def __init__(self, klass: OrionClass):
+        super().__init__()
+        self.klass = klass
+
+    def __str__(self):
+        return f"<{self.klass.name} instance>"
 
 class OrionBoundMethod(OrionObject):
     """A method bound to a specific receiver instance."""

@@ -36,6 +36,13 @@ class ComponentType(Type):
     def __str__(self) -> str:
         return self.name
 
+@dataclass(frozen=True)
+class ClassType(Type):
+    name: str
+
+    def __str__(self) -> str:
+        return self.name
+
 # --- Singleton Instances of Primitive Types ---
 
 ANY = PrimitiveType("any")
@@ -45,6 +52,7 @@ NUMBER = PrimitiveType("number")
 STRING = PrimitiveType("string")
 FUNCTION = PrimitiveType("function")
 TYPE = PrimitiveType("type")
+CLASS = PrimitiveType("class")
 COMPONENT = PrimitiveType("component")
 MODULE = PrimitiveType("module")
 
