@@ -48,9 +48,6 @@ class OpCode(IntEnum):
     OP_CALL = 22
     OP_RETURN = 23
 
-    # --- Modules ---
-    OP_USE = 24
-
     # --- Properties ---
     OP_GET_PROPERTY = 25
     OP_SET_PROPERTY = 26

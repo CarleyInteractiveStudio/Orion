@@ -169,3 +169,14 @@ class Orion:
             except EOFError:
                 print("\nExiting.")
                 break
+
+if __name__ == "__main__":
+    import sys
+    orion = Orion()
+    if len(sys.argv) > 2:
+        print("Usage: orion [script]")
+        sys.exit(64)
+    elif len(sys.argv) == 2:
+        orion.run_file(sys.argv[1])
+    else:
+        orion.run_prompt()

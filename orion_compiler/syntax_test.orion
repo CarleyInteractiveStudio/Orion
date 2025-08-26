@@ -1,0 +1,12 @@
+// A test for the new syntax-highlighting TextInput component.
+use ui;
+
+// The TextInput component has default code in it. We just need to
+// create an instance of it and set it as our App.
+var editor = ui.TextInput();
+
+// The framework doesn't have lifecycle hooks yet, so we call onInit manually
+// to tokenize the initial text.
+editor.onInit();
+
+var App = editor;

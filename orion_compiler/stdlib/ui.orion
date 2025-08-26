@@ -67,42 +67,81 @@ component Label {
 }
 
 
-// A text input field component.
+// A syntax-highlighting text input field component.
 component TextInput {
     // --- Default Properties ---
     x: 0;
     y: 0;
-    width: 200;
-    height: 40;
-    text: "";
+    width: 700;
+    height: 500;
+    text: "component App {\n    text: \"Hello World!\"\n}";
     fontSize: 18;
 
     // --- State ---
     state: {
         "text": "",
         "cursor_pos": 0,
-        "is_focused": false
+        "is_focused": false,
+        "tokens": []
     };
 
     // --- Methods ---
+
+    function onInit() {
+        this.state.text = this.text;
+        this.state.cursor_pos = this.state.text.length;
+        this._retokenize();
+    }
+
+    function _retokenize() {
+        this.state.tokens = lexer.tokenize(this.state.text);
+    }
+
     function render() {
-        var bg_color = "#FFFFFF";
+        var bg_color = "#1E1E1E";
         if (this.state.is_focused) {
-            bg_color = "#ECF0F1";
+            bg_color = "#252526";
         }
         draw.box({ x: this.x, y: this.y, width: this.width, height: this.height, color: bg_color });
-        draw.text({ x: this.x + 5, y: this.y + 10, text: this.state.text, color: "#2C3E50", fontSize: this.fontSize });
 
-        // Draw the cursor if focused
+        var theme = {
+            "KEYWORD": "#569CD6", "COMPONENT": "#4EC9B0", "FUNCTION": "#4EC9B0", "VAR": "#569CD6", "USE": "#C586C0",
+            "IDENTIFIER": "#9CDCFE",
+            "STRING": "#CE9178",
+            "NUMBER": "#B5CEA8",
+            "DEFAULT": "#D4D4D4"
+        };
+
+        var current_x = this.x + 10;
+        var current_y = this.y + 10;
+
+        var i = 0;
+        while (i < this.state.tokens.length) {
+            var token = this.state.tokens[i];
+            var color = theme.DEFAULT;
+            if (theme[token.type] != nil) {
+                color = theme[token.type];
+            }
+
+            draw.text({
+                x: current_x, y: current_y,
+                text: token.lexeme,
+                color: color,
+                fontSize: this.fontSize
+            });
+            current_x = current_x + draw.measure_text(token.lexeme, this.fontSize);
+            i = i + 1;
+        }
+
         if (this.state.is_focused) {
             var text_so_far = slice(this.state.text, 0, this.state.cursor_pos);
             var cursor_x_offset = draw.measure_text(text_so_far, this.fontSize);
             draw.box({
-                x: this.x + 5 + cursor_x_offset,
+                x: this.x + 10 + cursor_x_offset,
                 y: this.y + 8,
-                width: 1,
+                width: 2,
                 height: this.fontSize + 4,
-                color: "#2C3E50"
+                color: "#AEAFAD"
             });
         }
     }
@@ -118,14 +157,16 @@ component TextInput {
     function onTextInput(event) {
         var new_text = this.state.text + event.text;
         this.state.text = new_text;
-        this.state.cursor_pos = this.state.cursor_pos + 1; // Simple increment
+        this.state.cursor_pos = this.state.text.length;
+        this._retokenize();
     }
 
     function onKeyDown(event) {
         if (event.key == "backspace") {
             if (this.state.text.length > 0) {
                 this.state.text = slice(this.state.text, 0, this.state.text.length - 1);
-                this.state.cursor_pos = this.state.cursor_pos - 1;
+                this.state.cursor_pos = this.state.text.length;
+                this._retokenize();
             }
         }
     }
