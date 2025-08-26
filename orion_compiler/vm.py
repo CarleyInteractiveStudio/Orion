@@ -30,6 +30,14 @@ class VM:
             return None
         self._define_native("print", None, native_print) # Variadic
 
+        def native_slice(s, start, end=None):
+            if not isinstance(s, str) or not isinstance(start, int):
+                return None
+            if end is None:
+                return s[start:]
+            return s[start:end]
+        self._define_native("slice", None, native_slice) # Variadic-like for end
+
         # --- Native Modules ---
         self.native_modules: dict = {}
         self.draw_commands: list = []
@@ -102,9 +110,16 @@ class VM:
             })
             return None
 
+        def native_measure_text(text, font_size):
+            if not isinstance(text, str) or not isinstance(font_size, int):
+                return 0
+            font = skia.Font(None, font_size)
+            return font.measureText(text)
+
         draw_module = {
             "box": OrionNativeFunction(1, native_draw_box),
             "text": OrionNativeFunction(1, native_draw_text),
+            "measure_text": OrionNativeFunction(2, native_measure_text),
         }
         self.native_modules["draw"] = draw_module
 
@@ -116,10 +131,10 @@ class VM:
         self.frames.append(frame)
         return self._run()
 
-    def call_method_on_instance(self, instance: OrionComponentInstance, method_name: str):
-        """Finds and executes a method on a component instance."""
+    def call_method_on_instance(self, instance: OrionComponentInstance, method_name: str, args: dict = None):
+        """Finds and executes a method on a component instance, optionally passing arguments."""
         if method_name not in instance.definition.methods:
-            return # Or raise an error
+            return None # Or raise an error
 
         method_code = instance.definition.methods[method_name]
 
@@ -127,8 +142,16 @@ class VM:
         bound_method = OrionBoundMethod(instance, method_code)
         self.push(bound_method)
 
+        arg_count = 0
+        if args is not None:
+            # Convert python dict to OrionDict and push it for the method to use.
+            orion_args = OrionDict(args)
+            self.push(orion_args)
+            arg_count = 1
+
         # Set up a new call frame and run it
-        self._call_value(bound_method, 0)
+        if not self._call_value(bound_method, arg_count):
+            return None # Call failed
 
         # Run the VM until this new call frame is complete, and return the result.
         result, last_value = self._run()

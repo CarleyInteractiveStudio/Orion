@@ -106,6 +106,8 @@ class Orion:
         window = sdl2.ext.Window("Orion Application", size=(WIDTH, HEIGHT))
         window.show()
 
+        sdl2.SDL_StartTextInput() # Enable text input events
+
         window_surface = window.get_surface()
         renderer = GraphicalRenderer(WIDTH, HEIGHT)
         dispatcher = EventDispatcher()
