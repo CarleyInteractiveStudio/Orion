@@ -52,7 +52,7 @@ class Orion:
         and builds a 'scene graph' - a tree of dictionaries containing the
         instance, its absolute coordinates, and its children.
         This also populates the vm.draw_commands list as a side effect.
-        Handles special layout components like 'Column'.
+        Handles special layout components like 'Column' and 'Row'.
         """
         # Determine the component's absolute position.
         # This position is the base for its children's layout.
@@ -89,18 +89,18 @@ class Orion:
             if isinstance(rendered_output, OrionList):
                 children_to_process = rendered_output.elements
         else:
-            # No children to process if it's not a layout component and has no render method.
-            return node # Return the node itself, but with no children
+            return node
 
         # Process the children, applying layout logic if necessary
         if is_layout_component and component_instance.definition.name == "Column":
             spacing = component_instance.fields.get('spacing', 0)
-            current_y_offset = 0
+            padding = component_instance.fields.get('padding', 0)
+            current_y_offset = padding # Start with padding
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
                     if i > 0:
                         current_y_offset += spacing
-                    child_node = self._build_scene_graph(child_instance, base_abs_x, base_abs_y + current_y_offset)
+                    child_node = self._build_scene_graph(child_instance, base_abs_x + padding, base_abs_y + current_y_offset)
                     if child_node:
                         node["children"].append(child_node)
                         child_height = child_node["height"]
@@ -109,12 +109,13 @@ class Orion:
                         current_y_offset += child_height
         elif is_layout_component and component_instance.definition.name == "Row":
             spacing = component_instance.fields.get('spacing', 0)
-            current_x_offset = 0
+            padding = component_instance.fields.get('padding', 0)
+            current_x_offset = padding # Start with padding
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
                     if i > 0:
                         current_x_offset += spacing
-                    child_node = self._build_scene_graph(child_instance, base_abs_x + current_x_offset, base_abs_y)
+                    child_node = self._build_scene_graph(child_instance, base_abs_x + current_x_offset, base_abs_y + padding)
                     if child_node:
                         node["children"].append(child_node)
                         child_width = child_node["width"]
