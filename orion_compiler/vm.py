@@ -1,7 +1,7 @@
-from bytecode import Chunk, OpCode
-from objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
-from tokens import Token, TokenType
-from lexer import Lexer
+from .bytecode import Chunk, OpCode
+from .objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
+from .tokens import Token, TokenType
+from .lexer import Lexer
 from dataclasses import dataclass
 from typing import Any
 import time
@@ -28,7 +28,7 @@ class VM:
     def __init__(self):
         self.frames: list[CallFrame] = []
         self.stack: list = []
-        self.globals: dict = {}
+        self.globals: dict = {"nil": None}
 
         def native_print(*args):
             print(*[str(arg) for arg in args])
@@ -388,8 +388,10 @@ class VM:
                         self.pop()
                         self.push(bound_method)
                         continue
-                    self._runtime_error(f"Undefined property '{name}' on component '{instance.definition.name}'.")
-                    return InterpretResult.RUNTIME_ERROR, None
+                    # If property is not found, push nil instead of crashing.
+                    self.pop() # Pop the instance
+                    self.push(None) # Push nil
+                    continue
                 if isinstance(instance, OrionList):
                     if name == "length":
                         self.pop()
@@ -561,27 +563,34 @@ class VM:
             if arg_count > 1:
                 self._runtime_error(f"Component '{callee.name}' constructor takes 0 or 1 arguments, but got {arg_count}.")
                 return False
+
             props = {}
             if arg_count == 1:
-                props_arg = self.peek(0)
+                props_arg = self.pop() # Pop props dict
                 if not isinstance(props_arg, OrionDict):
                     self._runtime_error(f"Component constructor argument must be a dictionary.")
                     return False
                 props = props_arg.pairs
-                self.pop()
-            definition = self.stack.pop()
-            instance = OrionComponentInstance(definition)
-            for prop_node in definition.properties:
-                prop_name = prop_node.name.lexeme
-                default_value = None
-                if len(prop_node.values) == 1: default_value = prop_node.values[0].literal
-                instance.fields[prop_name] = default_value
+
+            # Now the callee (ComponentDef) is on top. Replace it with the instance.
+            instance = OrionComponentInstance(self.pop())
+            self.push(instance)
+
+            # Apply passed-in properties first, so the initializer can check for them.
             for key, value in props.items():
                 instance.fields[key] = value
-            if "state" in instance.fields and isinstance(instance.fields["state"], OrionDict):
-                state_dict = instance.fields["state"]
-                instance.fields["state"] = StateProxy(instance, state_dict.pairs)
-            self.push(instance)
+
+            # Call the property initializer.
+            if "__init_properties__" in instance.definition.methods:
+                init_method = instance.definition.methods["__init_properties__"]
+                bound_init = OrionBoundMethod(instance, init_method)
+                self._call_value(bound_init, 0)
+
+            # Re-wrap state proxy if it was provided as a prop
+            if "state" in props and isinstance(instance.fields["state"], OrionDict):
+                 state_dict = instance.fields["state"]
+                 instance.fields["state"] = StateProxy(instance, state_dict.pairs)
+
             return True
         elif isinstance(callee, OrionBoundMethod):
             if arg_count != callee.method.arity:

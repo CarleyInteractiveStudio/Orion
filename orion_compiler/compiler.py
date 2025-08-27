@@ -1,13 +1,13 @@
 import os
 from dataclasses import dataclass
-import ast_nodes as ast
-from bytecode import Chunk, OpCode
-from tokens import Token, TokenType
-from objects import OrionCompiledFunction, OrionComponentDef
-from orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
-from errors import type_error
-from lexer import Lexer
-from parser import Parser
+from . import ast_nodes as ast
+from .bytecode import Chunk, OpCode
+from .tokens import Token, TokenType
+from .objects import OrionCompiledFunction, OrionComponentDef
+from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
+from .errors import type_error
+from .lexer import Lexer
+from .parser import Parser
 
 # --- Module Resolution ---
 def _find_module(module_name: str) -> str | None:
@@ -24,7 +24,7 @@ def _find_module(module_name: str) -> str | None:
 def compile(source: str) -> OrionCompiledFunction | None:
     # This is a bit of a hack to get native module definitions to the analyzer.
     # In a larger system, this would come from a shared configuration.
-    from vm import VM
+    from .vm import VM
     temp_vm = VM()
     native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
 
@@ -35,7 +35,7 @@ def compile(source: str) -> OrionCompiledFunction | None:
         return main_function
     except Exception as e:
         print(f"FATAL: An unexpected error occurred during compilation: {e}")
-        return None
+        raise e
 
 def _compile_module_source(source: str, module_name: str, type_analyzer: 'TypeAnalyzer', module_cache: dict) -> OrionCompiledFunction | None:
     print(f"DEBUG: Compiling module '{module_name}'...")
@@ -79,7 +79,7 @@ class Local:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE }
+        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL }
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
@@ -200,7 +200,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_return_stmt(self, stmt: ast.Return):
         if stmt.value: self._analyze_expr(stmt.value)
     def visit_call_expr(self, expr: ast.Call) -> Type:
-        from orion_types import ComponentType, TYPE
+        from .orion_types import ComponentType, TYPE
         callee_type = self._analyze_expr(expr.callee)
         if callee_type == TYPE and isinstance(expr.callee, ast.Variable):
             component_name = expr.callee.name.lexeme
@@ -210,7 +210,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
     def visit_get_expr(self, expr: ast.Get) -> Type:
         object_type = self._analyze_expr(expr.object)
-        from orion_types import ComponentType
+        from .orion_types import ComponentType
         if isinstance(object_type, ListType):
             if expr.name.lexeme == "length": return NUMBER
             type_error(expr.name, f"Type 'list' has no property '{expr.name.lexeme}'."); self.had_error = True; return ANY
@@ -232,7 +232,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_set_expr(self, expr: ast.Set) -> Type:
         object_type = self._analyze_expr(expr.object)
         value_type = self._analyze_expr(expr.value)
-        from orion_types import ComponentType
+        from .orion_types import ComponentType
         if isinstance(object_type, ListType):
             type_error(expr.name, "Cannot set properties on a list."); self.had_error = True; return value_type
         if isinstance(object_type, ComponentType):
@@ -252,7 +252,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             type_error(expr.keyword, "Cannot use 'this' outside of a component method."); self.had_error = True; return ANY
         return self.current_component
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
-        from orion_types import ComponentType, TYPE
+        from .orion_types import ComponentType, TYPE
         component_name = stmt.name.lexeme
         new_component_type = ComponentType(component_name)
         self.type_map[component_name] = new_component_type
@@ -261,11 +261,16 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self.current_component = new_component_type
         props: dict[str, Type] = {}
         for member in stmt.body:
-            if isinstance(member, ast.StyleProp): props[member.name.lexeme] = self._infer_type_from_style_prop(member)
+            if isinstance(member, ast.StyleProp):
+                props[member.name.lexeme] = self._infer_type_from_style_prop(member)
+            elif isinstance(member, ast.Function):
+                props[member.name.lexeme] = FUNCTION
+
         self.component_props[component_name] = props
+
+        # Now analyze the function bodies
         for member in stmt.body:
             if isinstance(member, ast.Function):
-                props[member.name.lexeme] = FUNCTION
                 self.visit_function_stmt(member)
         self.current_component = original_component
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
@@ -273,7 +278,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
 
     def visit_class_stmt(self, stmt: ast.Class):
-        from orion_types import ClassType, CLASS
+        from .orion_types import ClassType, CLASS
         class_name = stmt.name.lexeme
         new_class_type = ClassType(class_name)
         self.type_map[class_name] = new_class_type
@@ -336,13 +341,8 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             type_error(expr.bracket, f"Object of type {object_type} is not subscriptable."); self.had_error = True
         return value_type
     def _infer_type_from_style_prop(self, prop: ast.StyleProp) -> Type:
-        if not prop.values: return NIL
-        if len(prop.values) == 1:
-            token = prop.values[0]
-            if token.token_type == TokenType.NUMBER: return NUMBER
-            if token.token_type == TokenType.STRING: return STRING
-            if token.token_type in (TokenType.TRUE, TokenType.FALSE): return BOOL
-        return ANY
+        # Now that properties are full expressions, we can just analyze them.
+        return self._analyze_expr(prop.value)
 
 class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, enclosing, function_stmt: ast.Function, function_type: str, type_analyzer, module_cache):
@@ -358,7 +358,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self.had_error = False
         func_name = function_stmt.name.lexeme if function_stmt.name else "<script>"
         self.function = OrionCompiledFunction(len(function_stmt.params), Chunk(), func_name)
-        if self.type == "method":
+        if self.type in ("method", "initializer"):
             self._add_local(Token(None, "this", None, 0), ANY)
         else:
             self._add_local(Token(None, "", None, 0), FUNCTION)
@@ -444,7 +444,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._begin_scope()
         for statement in stmt.statements:
             self._compile_stmt(statement)
-        self._end_scope(stmt.line)
+        self._end_scope(stmt.opening_brace.line)
 
     def visit_if_stmt(self, stmt: ast.If):
         self._compile_expr(stmt.condition)
@@ -549,7 +549,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_bytes(OpCode.OP_SET_PROPERTY, self._make_constant(expr.name.lexeme), expr.name.line)
 
     def visit_this_expr(self, expr: ast.This):
-        if self.type != 'method':
+        if self.type not in ("method", "initializer"):
             print("Compile Error: Cannot use 'this' outside of a method.")
             self.had_error = True
             return
@@ -558,16 +558,63 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
         component_name = stmt.name.lexeme
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(component_name), stmt.name.line)
-        properties = [prop for prop in stmt.body if isinstance(prop, ast.StyleProp)]
-        component_def = OrionComponentDef(component_name, properties)
+        name_constant = self._make_constant(component_name)
+        # Define the global variable for the component early.
+        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, name_constant, stmt.name.line)
+
+        component_def = OrionComponentDef(component_name, []) # Properties are now handled by an init method.
+
+        # Synthesize an __init_properties__ method from style properties
+        init_body = []
+        for member in stmt.body:
+            if isinstance(member, ast.StyleProp):
+                # Build the condition: this.prop == nil
+                condition = ast.Binary(
+                    left=ast.Get(
+                        object=ast.This(Token(TokenType.THIS, "this", None, member.name.line)),
+                        name=member.name
+                    ),
+                    operator=Token(TokenType.EQUAL_EQUAL, "==", None, member.name.line),
+                    right=ast.Literal(None)
+                )
+
+                # Build the assignment: this.prop = <initializer_expr>
+                assignment = ast.Expression(ast.Set(
+                    object=ast.This(Token(TokenType.THIS, "this", None, member.name.line)),
+                    name=member.name,
+                    value=member.value
+                ))
+
+                # Build the if statement
+                if_stmt = ast.If(
+                    if_token=Token(TokenType.IF, "if", None, member.name.line),
+                    condition=condition,
+                    then_branch=assignment,
+                    else_branch=None
+                )
+                init_body.append(if_stmt)
+
+        if init_body:
+            init_func_node = ast.Function(
+                Token(TokenType.IDENTIFIER, "__init_properties__", None, stmt.name.line),
+                [], init_body, None
+            )
+            # Treat this synthetic method as an initializer so it returns `this`.
+            compiler = Compiler(self, init_func_node, "initializer", self.type_analyzer, self.module_cache)
+            init_function_obj = compiler._end_compiler(stmt.name.line)
+            component_def.methods["__init_properties__"] = init_function_obj
+
+        # Compile user-defined methods
         for member in stmt.body:
             if isinstance(member, ast.Function):
                 compiler = Compiler(self, member, "method", self.type_analyzer, self.module_cache)
                 function_obj = compiler._end_compiler(member.name.line)
                 component_def.methods[member.name.lexeme] = function_obj
+
+        # Push the completed component definition onto the stack
         self._emit_constant(component_def, stmt.name.line)
-        self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(component_name), stmt.name.line)
+        # And assign it to the global variable.
+        self._emit_bytes(OpCode.OP_SET_GLOBAL, name_constant, stmt.name.line)
 
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass

@@ -6,13 +6,13 @@ import ctypes
 import os
 import re
 
-from lexer import Lexer
-from parser import Parser
-from compiler import compile as compile_source
-from vm import VM, InterpretResult
-from objects import OrionComponentInstance, OrionList
-from renderer import GraphicalRenderer
-from event_dispatcher import EventDispatcher
+from .lexer import Lexer
+from .parser import Parser
+from .compiler import compile as compile_source
+from .vm import VM, InterpretResult
+from .objects import OrionComponentInstance, OrionList
+from .renderer import GraphicalRenderer
+from .event_dispatcher import EventDispatcher
 
 
 class Orion:
@@ -102,49 +102,43 @@ class Orion:
         if result != InterpretResult.OK:
             self.had_runtime_error = True
 
-    def run_file_with_dependencies(self, entry_path: str, output_path: str = None):
+    def run_file_with_dependencies(self, entry_path: str, output_path: str = None, test_click_coords: tuple = None):
         """
         Resolves dependencies, then compiles and runs an Orion script from a file.
         This is the main entry point for running applications.
         """
         try:
+            # Step 1: Resolve and load all modules
             ordered_files = self._resolve_dependencies(entry_path)
-
             for path in ordered_files:
                 print(f"INFO: Loading module '{os.path.basename(path)}'...")
                 with open(path, 'r', encoding='utf-8') as f:
                     source = f.read()
-
                 compiled_function = compile_source(source)
                 if compiled_function is None:
                     self.had_error = True
                     print(f"ERROR: Compilation failed for '{path}'.")
                     break
-
                 result, _ = self.vm.interpret(compiled_function)
                 if result != InterpretResult.OK:
                     self.had_runtime_error = True
                     print(f"ERROR: Runtime error while loading module '{path}'.")
                     break
-
             if self.had_error or self.had_runtime_error:
                 return
 
+            # Step 2: Get the main App instance
             app_instance = self.vm.globals.get("App")
             if not isinstance(app_instance, OrionComponentInstance):
                 print("INFO: Script finished. No 'App' component instance found to display.")
                 return
 
-            if output_path:
-                print(f"INFO: Running in headless mode. Output will be saved to {output_path}")
-                width = app_instance.fields.get('width', 800)
-                height = app_instance.fields.get('height', 600)
-
-                renderer = GraphicalRenderer(width, height)
-                self.vm.draw_commands = []
-                self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
-                renderer.process_commands(self.vm.draw_commands)
-                renderer.save_to_file(output_path)
+            # Step 3: Run in GUI, Headless, or Test mode
+            if test_click_coords:
+                output_file = output_path if output_path else "test_output.png"
+                self._run_test_mode(app_instance, test_click_coords, output_file)
+            elif output_path:
+                self._run_headless_mode(app_instance, output_path)
             else:
                 self._run_gui(app_instance)
 
@@ -156,31 +150,12 @@ class Orion:
 
 
     def _build_scene_graph(self, component_instance, offset_x, offset_y):
-        """
-        Recursively traverses the component tree, calling render() on each,
-        and builds a 'scene graph' - a tree of dictionaries containing the
-        instance, its absolute coordinates, and its children.
-        This also populates the vm.draw_commands list as a side effect.
-        Handles special layout components like 'Column' and 'Row'.
-        """
-        # Determine the component's absolute position.
-        # This position is the base for its children's layout.
+        # ... [omitted for brevity, same as before]
         base_abs_x = offset_x + component_instance.fields.get('x', 0)
         base_abs_y = offset_y + component_instance.fields.get('y', 0)
-
-        node = {
-            "instance": component_instance,
-            "x": base_abs_x,
-            "y": base_abs_y,
-            "width": component_instance.fields.get('width', 0),
-            "height": component_instance.fields.get('height', 0),
-            "children": []
-        }
-
-        # Get the list of child instances to process
+        node = {"instance": component_instance, "x": base_abs_x, "y": base_abs_y, "width": component_instance.fields.get('width', 0), "height": component_instance.fields.get('height', 0), "children": []}
         children_to_process = []
         is_layout_component = component_instance.definition.name in ("Column", "Row")
-
         if is_layout_component:
             children_field = component_instance.fields.get("children")
             if isinstance(children_field, OrionList):
@@ -188,19 +163,14 @@ class Orion:
         elif "render" in component_instance.definition.methods:
             commands_before = len(self.vm.draw_commands)
             rendered_output = self.vm.call_method_on_instance(component_instance, "render")
-
-            # Adjust the coordinates of any new draw commands by the component's absolute position.
             for i in range(commands_before, len(self.vm.draw_commands)):
                 command = self.vm.draw_commands[i]
                 command['x'] += base_abs_x
                 command['y'] += base_abs_y
-
             if isinstance(rendered_output, OrionList):
                 children_to_process = rendered_output.elements
         else:
             return node
-
-        # Process the children, applying layout logic if necessary
         if is_layout_component and component_instance.definition.name == "Column":
             spacing = component_instance.fields.get('spacing', 0)
             padding = component_instance.fields.get('padding', 0)
@@ -209,27 +179,18 @@ class Orion:
             current_y_offset = padding
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
-                    if i > 0:
-                        current_y_offset += spacing
-
+                    if i > 0: current_y_offset += spacing
                     child_width = child_instance.fields.get('width', 0)
-                    if child_width == 0 and child_instance.definition.name == 'Label':
-                        child_width = len(child_instance.fields.get('text', '')) * (child_instance.fields.get('fontSize', 16) * 0.6)
-
+                    if child_width == 0 and child_instance.definition.name == 'Label': child_width = len(child_instance.fields.get('text', '')) * (child_instance.fields.get('fontSize', 16) * 0.6)
                     x_offset = padding
-                    if align == 'center':
-                        x_offset = (parent_width - child_width) / 2
-                    elif align == 'end':
-                        x_offset = parent_width - child_width - padding
-
+                    if align == 'center': x_offset = (parent_width - child_width) / 2
+                    elif align == 'end': x_offset = parent_width - child_width - padding
                     child_node = self._build_scene_graph(child_instance, base_abs_x + x_offset, base_abs_y + current_y_offset)
                     if child_node:
                         node["children"].append(child_node)
                         child_height = child_node["height"]
-                        if child_height == 0 and child_node["instance"].definition.name == 'Label':
-                            child_height = child_node["instance"].fields.get('fontSize', 16) * 1.5
+                        if child_height == 0 and child_node["instance"].definition.name == 'Label': child_height = child_node["instance"].fields.get('fontSize', 16) * 1.5
                         current_y_offset += child_height
-
         elif is_layout_component and component_instance.definition.name == "Row":
             spacing = component_instance.fields.get('spacing', 0)
             padding = component_instance.fields.get('padding', 0)
@@ -238,19 +199,12 @@ class Orion:
             current_x_offset = padding
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
-                    if i > 0:
-                        current_x_offset += spacing
-
+                    if i > 0: current_x_offset += spacing
                     child_height = child_instance.fields.get('height', 0)
-                    if child_height == 0 and child_instance.definition.name == 'Label':
-                        child_height = child_instance.fields.get('fontSize', 16) * 1.5
-
+                    if child_height == 0 and child_instance.definition.name == 'Label': child_height = child_instance.fields.get('fontSize', 16) * 1.5
                     y_offset = padding
-                    if align == 'center':
-                        y_offset = (parent_height - child_height) / 2
-                    elif align == 'end':
-                        y_offset = parent_height - child_height - padding
-
+                    if align == 'center': y_offset = (parent_height - child_height) / 2
+                    elif align == 'end': y_offset = parent_height - child_height - padding
                     child_node = self._build_scene_graph(child_instance, base_abs_x + current_x_offset, base_abs_y + y_offset)
                     if child_node:
                         node["children"].append(child_node)
@@ -261,70 +215,86 @@ class Orion:
                             child_width = len(text) * (font_size * 0.6)
                         current_x_offset += child_width
         else:
-            # Default behavior: children are positioned relative to the parent's origin.
             for child_instance in children_to_process:
                 if isinstance(child_instance, OrionComponentInstance):
                     child_node = self._build_scene_graph(child_instance, base_abs_x, base_abs_y)
-                    if child_node:
-                        node["children"].append(child_node)
-
+                    if child_node: node["children"].append(child_node)
         return node
 
 
     def _run_gui(self, app_instance: OrionComponentInstance):
-        """Initializes SDL2 and starts the main application loop."""
+        # ... [omitted for brevity, same as before]
         print("INFO: Starting Orion GUI application...")
-
         sdl2.ext.init()
-
         WIDTH, HEIGHT = 800, 600
         window = sdl2.ext.Window("Orion Application", size=(WIDTH, HEIGHT))
         window.show()
-
-        sdl2.SDL_StartTextInput() # Enable text input events
-
+        sdl2.SDL_StartTextInput()
         window_surface = window.get_surface()
         renderer = GraphicalRenderer(WIDTH, HEIGHT)
         dispatcher = EventDispatcher()
-
         running = True
         event = sdl2.SDL_Event()
         while running:
             while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
-                if event.type == sdl2.SDL_QUIT:
-                    running = False
-
-                if self.scene_graph: # Only dispatch if we have a scene graph
-                    dispatcher.dispatch(event, self.vm, self.scene_graph)
-
+                if event.type == sdl2.SDL_QUIT: running = False
+                if self.scene_graph: dispatcher.dispatch(event, self.vm, self.scene_graph)
             if app_instance.dirty:
                 print("DEBUG: Dirty flag was set, re-rendering.")
                 self.vm.draw_commands = []
-
-                # Rebuild the scene graph and populate draw commands
                 self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
-
                 renderer.process_commands(self.vm.draw_commands)
                 skia_pixels = renderer.surface.toarray().tobytes()
                 ctypes.memmove(window_surface.pixels, skia_pixels, len(skia_pixels))
-
                 window.refresh()
                 app_instance.dirty = False
-
             sdl2.SDL_Delay(10)
-
         sdl2.ext.quit()
 
+    def _run_headless_mode(self, app_instance: OrionComponentInstance, output_path: str):
+        # ... [omitted for brevity, same as before]
+        print(f"INFO: Running in headless mode. Output will be saved to {output_path}")
+        width = app_instance.fields.get('width', 800)
+        height = app_instance.fields.get('height', 600)
+        renderer = GraphicalRenderer(width, height)
+        self.vm.draw_commands = []
+        self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
+        renderer.process_commands(self.vm.draw_commands)
+        renderer.save_to_file(output_path)
+
+    def _run_test_mode(self, app_instance: OrionComponentInstance, click_coords: tuple, output_path: str):
+        # ... [omitted for brevity, same as before]
+        print(f"INFO: Running in automated test mode. Output will be saved to {output_path}")
+        width = app_instance.fields.get('width', 800)
+        height = app_instance.fields.get('height', 600)
+        renderer = GraphicalRenderer(width, height)
+        dispatcher = EventDispatcher()
+        self.vm.draw_commands = []
+        self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
+        print(f"INFO: Simulating click at {click_coords}")
+        event = sdl2.SDL_Event()
+        event.type = sdl2.SDL_MOUSEBUTTONDOWN
+        event.button.button = sdl2.SDL_BUTTON_LEFT
+        event.button.x = click_coords[0]
+        event.button.y = click_coords[1]
+        dispatcher.dispatch(event, self.vm, self.scene_graph)
+        app_instance.dirty = True
+        if app_instance.dirty:
+            self.vm.draw_commands = []
+            self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
+            renderer.process_commands(self.vm.draw_commands)
+            app_instance.dirty = False
+        renderer.save_to_file(output_path)
 
     def run_prompt(self):
-        """Runs an interactive REPL session."""
+        # ... [omitted for brevity, same as before]
         print("Orion REPL (Ctrl+C to exit)")
         print("NOTE: 'use' statements for .orion files are not supported in REPL.")
         while True:
             try:
                 line = input("> ")
                 if not line: continue
-                self.vm = VM() # New VM for each line to avoid state pollution
+                self.vm = VM()
                 self.run(line)
                 self.had_error = False
             except KeyboardInterrupt:
@@ -337,17 +307,35 @@ class Orion:
 if __name__ == "__main__":
     import sys
     orion = Orion()
+    # This __main__ block assumes the script is run as a module from the project root
     if len(sys.argv) > 1:
         script_path = sys.argv[1]
         output_path = None
-        if len(sys.argv) > 2:
-            if sys.argv[2] == '--output' and len(sys.argv) == 4:
-                output_path = sys.argv[3]
-            else:
-                print("Usage: orion <script_path> [--output <output_path>]")
-                sys.exit(64)
+        test_click_coords = None
 
-        orion.run_file_with_dependencies(script_path, output_path=output_path)
+        # Basic command line parsing
+        try:
+            # Note: sys.argv for a module is ['orion_compiler/orion.py', arg1, arg2, ...]
+            # So we need to adjust indexing if run with -m
+            args = sys.argv[1:]
+
+            script_path = args[0]
+
+            if '--output' in args:
+                output_path = args[args.index('--output') + 1]
+            if '--test-click' in args:
+                coords_str = args[args.index('--test-click') + 1]
+                x_str, y_str = coords_str.split(',')
+                test_click_coords = (int(x_str), int(y_str))
+        except (ValueError, IndexError):
+            print("Usage: python -m orion_compiler.orion <script> [--output path] [--test-click x,y]")
+            sys.exit(64)
+
+        orion.run_file_with_dependencies(
+            script_path,
+            output_path=output_path,
+            test_click_coords=test_click_coords
+        )
         if orion.had_error: sys.exit(65)
         if orion.had_runtime_error: sys.exit(70)
     else:

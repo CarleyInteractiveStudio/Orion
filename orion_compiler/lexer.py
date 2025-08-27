@@ -1,6 +1,6 @@
 from typing import List, Any
 
-from tokens import Token, TokenType, keywords
+from .tokens import Token, TokenType, keywords
 
 
 class Lexer:
@@ -55,10 +55,32 @@ class Lexer:
         return self.source[self.current + 1]
 
     def _string(self, quote_char: str):
+        value = []
         while self._peek() != quote_char and not self._is_at_end():
-            if self._peek() == '\n':
-                self.line += 1
-            self._advance()
+            char = self._peek()
+            if char == '\\':
+                self._advance() # consume the '\'
+                if self._is_at_end():
+                    print(f"[Line {self.line}] Error: Unterminated string escape sequence.")
+                    return
+
+                escape_char = self._peek()
+                if escape_char == 'n': value.append('\n')
+                elif escape_char == 't': value.append('\t')
+                elif escape_char == '"': value.append('"')
+                elif escape_char == "'": value.append("'")
+                elif escape_char == '\\': value.append('\\')
+                else:
+                    # Not a valid escape, treat as literal backslash and character
+                    value.append('\\')
+                    value.append(escape_char)
+
+                self._advance() # consume the escaped character
+            else:
+                if char == '\n':
+                    self.line += 1
+                value.append(char)
+                self._advance()
 
         if self._is_at_end():
             # Handle unterminated string error
@@ -67,9 +89,8 @@ class Lexer:
 
         self._advance()  # The closing quote.
 
-        # Trim the surrounding quotes.
-        value = self.source[self.start + 1:self.current - 1]
-        self._add_token(TokenType.STRING, value)
+        # The literal value is the joined string
+        self._add_token(TokenType.STRING, "".join(value))
 
     def _number(self):
         while self._is_digit(self._peek()):

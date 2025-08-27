@@ -4,14 +4,14 @@ import os
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from lexer import Lexer
-from parser import Parser
-from compiler import compile as compile_source
-from vm import VM, InterpretResult
-from disassembler import disassemble_chunk
+from .lexer import Lexer
+from .parser import Parser
+from .compiler import compile as compile_source
+from .vm import VM, InterpretResult
+from .disassembler import disassemble_chunk
 
 def _orion_to_python_test_helper(value):
-    from objects import OrionList, OrionDict, OrionInstance
+    from .objects import OrionList, OrionDict, OrionInstance
     if isinstance(value, OrionList):
         return [_orion_to_python_test_helper(v) for v in value.elements]
     if isinstance(value, OrionDict):

@@ -1,5 +1,5 @@
-import ast_nodes as ast
-from tokens import Token
+from . import ast_nodes as ast
+from .tokens import Token
 
 class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
     """

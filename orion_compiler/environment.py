@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 
-from tokens import Token
-from errors import OrionRuntimeError
+from .tokens import Token
+from .errors import OrionRuntimeError
 
 class Environment:
     """
