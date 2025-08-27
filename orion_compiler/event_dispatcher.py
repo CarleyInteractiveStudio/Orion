@@ -62,7 +62,6 @@ class EventDispatcher:
         """
         mx, my = event.motion.x, event.motion.y
         newly_hovered = self._find_hit_component_recursive(scene_graph, mx, my)
-
         if self.hovered_component is not newly_hovered:
             # The hover state has changed.
             if self.hovered_component:

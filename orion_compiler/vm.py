@@ -592,6 +592,12 @@ class VM:
                  state_dict = instance.fields["state"]
                  instance.fields["state"] = StateProxy(instance, state_dict.pairs)
 
+            # Finally, call onInit if it exists.
+            if "onInit" in instance.definition.methods:
+                init_method = instance.definition.methods["onInit"]
+                bound_init = OrionBoundMethod(instance, init_method)
+                self._call_value(bound_init, 0)
+
             return True
         elif isinstance(callee, OrionBoundMethod):
             if arg_count != callee.method.arity:
