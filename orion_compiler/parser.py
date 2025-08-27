@@ -206,6 +206,12 @@ class Parser:
     def _class_declaration(self) -> ast.Stmt:
         """Parses a class declaration."""
         name = self._consume(TokenType.IDENTIFIER, "Expect class name.")
+
+        superclass = None
+        if self._match(TokenType.LESS):
+            self._consume(TokenType.IDENTIFIER, "Expect superclass name.")
+            superclass = ast.Variable(self._previous())
+
         self._consume(TokenType.LEFT_BRACE, "Expect '{' before class body.")
 
         methods = []
@@ -213,7 +219,7 @@ class Parser:
             methods.append(self._function("method"))
 
         self._consume(TokenType.RIGHT_BRACE, "Expect '}' after class body.")
-        return ast.Class(name, methods)
+        return ast.Class(name, superclass, methods)
 
     def _component_declaration(self) -> ast.Stmt:
         """Parses a component declaration."""
@@ -415,6 +421,11 @@ class Parser:
         """Parses primary expressions (literals, grouping, identifiers, lists)."""
         if self._match(TokenType.FALSE): return ast.Literal(False)
         if self._match(TokenType.TRUE): return ast.Literal(True)
+        if self._match(TokenType.SUPER):
+            keyword = self._previous()
+            self._consume(TokenType.DOT, "Expect '.' after 'super'.")
+            method = self._consume(TokenType.IDENTIFIER, "Expect superclass method name.")
+            return ast.Super(keyword, method)
         if self._match(TokenType.THIS): return ast.This(self._previous())
 
         if self._match(TokenType.NUMBER, TokenType.STRING):

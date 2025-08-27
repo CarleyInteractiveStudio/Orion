@@ -13,6 +13,10 @@ class ExprVisitor(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def visit_super_expr(self, expr: 'Super'):
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_grouping_expr(self, expr: 'Grouping'):
         raise NotImplementedError
 
@@ -70,6 +74,10 @@ class ExprVisitor(ABC):
 
     @abstractmethod
     def visit_generic_type_expr(self, expr: 'GenericType'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_super_expr(self, expr: 'Super'):
         raise NotImplementedError
 
 
@@ -151,6 +159,15 @@ class Binary(Expr):
 
     def accept(self, visitor: ExprVisitor):
         return visitor.visit_binary_expr(self)
+
+
+@dataclass
+class Super(Expr):
+    keyword: Token
+    method: Token
+
+    def accept(self, visitor: ExprVisitor):
+        return visitor.visit_super_expr(self)
 
 
 @dataclass
@@ -411,6 +428,7 @@ class UseStmt(Stmt):
 @dataclass
 class Class(Stmt):
     name: Token
+    superclass: Optional['Variable']
     methods: List['Function']
 
     def accept(self, visitor: StmtVisitor):

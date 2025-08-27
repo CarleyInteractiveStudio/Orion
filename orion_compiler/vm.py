@@ -405,6 +405,35 @@ class VM:
                 klass = self.peek(1)
                 klass.methods[method_name] = method
                 self.pop() # Pop the method, leave the class on the stack
+            elif instruction == OpCode.OP_INHERIT:
+                superclass = self.peek(1)
+                subclass = self.peek(0)
+                if not isinstance(superclass, OrionClass):
+                    print("RuntimeError: Superclass must be a class.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                subclass.superclass = superclass
+                # Copy methods from superclass to subclass
+                for method_name, method in superclass.methods.items():
+                    subclass.methods[method_name] = method
+
+                self.pop() # Pop the superclass, leaving the subclass on top
+            elif instruction == OpCode.OP_GET_SUPER:
+                method_name = read_constant()
+                instance = self.pop()
+                superclass = instance.klass.superclass
+
+                if superclass is None:
+                    print(f"RuntimeError: 'super' used in a class with no superclass.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                if method_name not in superclass.methods:
+                    print(f"RuntimeError: Undefined property '{method_name}' on superclass '{superclass.name}'.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                method = superclass.methods[method_name]
+                bound_method = OrionBoundMethod(instance, method)
+                self.push(bound_method)
             elif instruction == OpCode.OP_IMPORT_NATIVE:
                 module_name = read_constant()
                 if module_name not in self.native_modules:

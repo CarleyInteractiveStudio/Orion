@@ -79,7 +79,7 @@ class Local:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE }
+        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL }
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
@@ -252,6 +252,10 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if self.current_component is None:
             type_error(expr.keyword, "Cannot use 'this' outside of a component method."); self.had_error = True; return ANY
         return self.current_component
+
+    def visit_super_expr(self, expr: ast.Super) -> Type:
+        return ANY
+
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
         from .orion_types import ComponentType, TYPE
         component_name = stmt.name.lexeme
@@ -388,6 +392,15 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         constant_idx = self._make_constant(value)
         if constant_idx > 255: self.had_error = True; print("Too many constants in one chunk."); return
         self._emit_bytes(OpCode.OP_CONSTANT, constant_idx)
+
+    def _emit_opcode_and_constant_index(self, opcode, value):
+        constant_idx = self._make_constant(value)
+        if constant_idx > 255:
+            self.had_error = True
+            print("Too many constants in one chunk.")
+            return
+        self._emit_bytes(opcode, constant_idx)
+
     def visit_expression_stmt(self, stmt: ast.Expression):
         self._compile_expr(stmt.expression); self._emit_byte(OpCode.OP_POP)
     def visit_literal_expr(self, expr: ast.Literal): self._emit_constant(expr.value)
@@ -403,16 +416,16 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
         if arg != -1: self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
-        else: self._emit_bytes(OpCode.OP_GET_GLOBAL, self._make_constant(expr.name.lexeme))
+        else: self._emit_opcode_and_constant_index(OpCode.OP_GET_GLOBAL, expr.name.lexeme)
     def visit_assign_expr(self, expr: ast.Assign):
         self._compile_expr(expr.value)
         arg = self._resolve_local(expr.name)
         if arg != -1: self._emit_bytes(OpCode.OP_SET_LOCAL, arg)
-        else: self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(expr.name.lexeme))
+        else: self._emit_opcode_and_constant_index(OpCode.OP_SET_GLOBAL, expr.name.lexeme)
     def visit_var_stmt(self, stmt: ast.Var):
         self._compile_expr(stmt.initializer if stmt.initializer else ast.Literal(None))
         if self.scope_depth > 0: self._add_local(stmt.name, ANY); return
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme)
     def visit_block_stmt(self, stmt: ast.Block):
         self._begin_scope()
         for statement in stmt.statements: self._compile_stmt(statement)
@@ -436,7 +449,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         function_obj = compiler._end_compiler()
         self._emit_constant(function_obj)
         if self.scope_depth > 0: self._add_local(stmt.name, FUNCTION)
-        else: self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(stmt.name.lexeme))
+        else: self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme)
     def visit_call_expr(self, expr: ast.Call):
         self._compile_expr(expr.callee)
         for arg in expr.arguments: self._compile_expr(arg)
@@ -478,15 +491,20 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_logical_expr(self, expr: ast.Logical): pass
     def visit_get_expr(self, expr: ast.Get):
         self._compile_expr(expr.object)
-        self._emit_bytes(OpCode.OP_GET_PROPERTY, self._make_constant(expr.name.lexeme))
+        self._emit_opcode_and_constant_index(OpCode.OP_GET_PROPERTY, expr.name.lexeme)
     def visit_set_expr(self, expr: ast.Set):
         self._compile_expr(expr.object); self._compile_expr(expr.value)
-        self._emit_bytes(OpCode.OP_SET_PROPERTY, self._make_constant(expr.name.lexeme))
+        self._emit_opcode_and_constant_index(OpCode.OP_SET_PROPERTY, expr.name.lexeme)
     def visit_this_expr(self, expr: ast.This):
         if self.type != 'method':
             print("Compile Error: Cannot use 'this' outside of a method."); self.had_error = True; return
         arg = self._resolve_local(expr.keyword)
         self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
+
+    def visit_super_expr(self, expr: ast.Super):
+        self.visit_this_expr(ast.This(expr.keyword))
+        self._emit_opcode_and_constant_index(OpCode.OP_GET_SUPER, expr.method.lexeme)
+
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
         component_name = stmt.name.lexeme
         self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(component_name))
@@ -506,13 +524,11 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         module_name = stmt.name.lexeme
 
         # Emit code to load the module object
-        module_name_constant = self._make_constant(module_name)
-        self._emit_bytes(OpCode.OP_IMPORT_NATIVE, module_name_constant)
+        self._emit_opcode_and_constant_index(OpCode.OP_IMPORT_NATIVE, module_name)
 
         # Define a global variable for the module
         bind_name = stmt.alias.lexeme if stmt.alias else module_name
-        bind_name_constant = self._make_constant(bind_name)
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, bind_name_constant)
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, bind_name)
     def visit_list_literal_expr(self, expr: ast.ListLiteral):
         for element in expr.elements: self._compile_expr(element)
         self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements))
@@ -531,8 +547,11 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_class_stmt(self, stmt: ast.Class):
         class_name = stmt.name.lexeme
-        name_constant = self._make_constant(class_name)
-        self._emit_bytes(OpCode.OP_CLASS, name_constant)
+        self._emit_opcode_and_constant_index(OpCode.OP_CLASS, class_name)
+
+        if stmt.superclass:
+            self._compile_expr(stmt.superclass)
+            self._emit_byte(OpCode.OP_INHERIT)
 
         # Compile methods
         for method_node in stmt.methods:
@@ -540,11 +559,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             function_obj = compiler._end_compiler()
 
             # Add the compiled function to the constant pool
-            method_constant_idx = self._make_constant(function_obj)
-            self._emit_bytes(OpCode.OP_CONSTANT, method_constant_idx)
+            self._emit_constant(function_obj)
 
             # Add the method name to the constant pool
-            method_name_idx = self._make_constant(method_node.name.lexeme)
-            self._emit_bytes(OpCode.OP_METHOD, method_name_idx)
+            self._emit_opcode_and_constant_index(OpCode.OP_METHOD, method_node.name.lexeme)
 
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, name_constant)
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, class_name)

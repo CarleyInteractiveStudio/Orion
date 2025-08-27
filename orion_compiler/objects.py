@@ -46,9 +46,10 @@ class OrionCompiledFunction(OrionObject):
 
 class OrionClass(OrionObject):
     """Represents a class definition at runtime."""
-    def __init__(self, name: str):
+    def __init__(self, name: str, superclass: 'OrionClass' = None):
         self.name = name
         self.methods = {}
+        self.superclass = superclass
 
     def __str__(self) -> str:
         return f"<class {self.name}>"

@@ -1,0 +1,45 @@
+use ui;
+use layout;
+
+component App {
+    width: 800;
+    height: 600;
+
+    function render() {
+        var items = [
+            ui.Label({ text: "Item 1" }),
+            ui.Label({ text: "Item 2" }),
+            ui.Label({ text: "Item 3" }),
+            ui.Label({ text: "Item 4" }),
+            ui.Label({ text: "Item 5" }),
+            ui.Label({ text: "Item 6" }),
+            ui.Label({ text: "Item 7" }),
+            ui.Label({ text: "Item 8" }),
+            ui.Label({ text: "Item 9" }),
+            ui.Label({ text: "Item 10" }),
+            ui.Label({ text: "Item 11" }),
+            ui.Label({ text: "Item 12" }),
+            ui.Label({ text: "Item 13" }),
+            ui.Label({ text: "Item 14" }),
+            ui.Label({ text: "Item 15" })
+        ];
+
+        return [
+            ui.ScrollView({
+                x: 50,
+                y: 50,
+                width: 200,
+                height: 200,
+                children: [
+                    layout.Column({
+                        spacing: 10,
+                        padding: 5,
+                        children: items
+                    })
+                ]
+            })
+        ];
+    }
+}
+
+var App = App({});

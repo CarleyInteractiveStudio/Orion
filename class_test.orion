@@ -1,0 +1,12 @@
+class Breakfast {
+  cook() {
+    print("Eggs and bacon");
+  }
+
+  serve() {
+    print("Enjoy your breakfast!");
+  }
+}
+
+var breakfast = Breakfast();
+breakfast.serve();

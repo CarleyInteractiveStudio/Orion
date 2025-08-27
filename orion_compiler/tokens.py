@@ -60,6 +60,7 @@ class TokenType(Enum):
     PUBLIC = auto()
     RETURN = auto()
     STRING_TYPE = auto()
+    SUPER = auto()
     SWITCH = auto()
     THIS = auto()
     TRUE = auto()
@@ -107,6 +108,7 @@ keywords = {
     "public": TokenType.PUBLIC,
     "return": TokenType.RETURN,
     "string": TokenType.STRING_TYPE,
+    "super": TokenType.SUPER,
     "switch": TokenType.SWITCH,
     "this": TokenType.THIS,
     "true": TokenType.TRUE,

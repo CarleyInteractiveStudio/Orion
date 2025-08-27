@@ -14,6 +14,15 @@ class GraphicalRenderer:
         # Set a default background color
         self.canvas.clear(skia.ColorWHITE)
 
+    def save(self):
+        self.canvas.save()
+
+    def clipRect(self, rect):
+        self.canvas.clipRect(rect)
+
+    def restore(self):
+        self.canvas.restore()
+
     def process_commands(self, commands: list[dict]):
         """Processes a list of draw command dictionaries."""
         for command in commands:
