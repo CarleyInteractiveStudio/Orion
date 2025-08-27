@@ -1,0 +1,44 @@
+use ui;
+
+component App {
+    width: 800;
+    height: 600;
+
+    state: {
+        "message": "Initial"
+    };
+
+    function on_button_enter() {
+        this.state["message"] = "Hovering!";
+    }
+
+    function on_button_leave() {
+        this.state["message"] = "Left!";
+    }
+
+    function on_button_click() {
+        this.state["message"] = "Clicked!";
+    }
+
+    function render() {
+        return [
+            ui.Button({
+                x: 50,
+                y: 50,
+                width: 150,
+                height: 50,
+                text: "Test Me",
+                onClick: this.on_button_click,
+                onMouseEnter: this.on_button_enter,
+                onMouseLeave: this.on_button_leave
+            }),
+            ui.Label({
+                x: 50,
+                y: 120,
+                text: this.state["message"]
+            })
+        ];
+    }
+}
+
+var App = App({});

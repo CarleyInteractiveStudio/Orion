@@ -9,14 +9,16 @@ class EventDispatcher:
     """
     def __init__(self):
         self.focused_component = None
+        self.hovered_component = None
 
     def dispatch(self, event: sdl2.SDL_Event, vm: VM, scene_graph: dict):
         """
         Dispatches a single event to the component tree represented by the scene graph.
         """
-        if event.type == sdl2.SDL_MOUSEBUTTONDOWN:
+        if event.type == sdl2.SDL_MOUSEMOTION:
+            self._handle_mouse_motion(event, vm, scene_graph)
+        elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
             self._handle_mouse_down(event, vm, scene_graph)
-
         elif self.focused_component:
             # If a component is focused, send it keyboard events.
             if event.type == sdl2.SDL_TEXTINPUT:
@@ -53,6 +55,25 @@ class EventDispatcher:
             print(f"INFO: Click hit on component {hit_component.definition.name} at ({mx}, {my})")
             if "onClick" in hit_component.definition.methods:
                 vm.call_method_on_instance(hit_component, "onClick")
+
+    def _handle_mouse_motion(self, event: sdl2.SDL_Event, vm: VM, scene_graph: dict):
+        """
+        Handles mouse motion to track entering and leaving components for hover effects.
+        """
+        mx, my = event.motion.x, event.motion.y
+        newly_hovered = self._find_hit_component_recursive(scene_graph, mx, my)
+
+        if self.hovered_component is not newly_hovered:
+            # The hover state has changed.
+            if self.hovered_component:
+                if "onMouseLeave" in self.hovered_component.definition.methods:
+                    vm.call_method_on_instance(self.hovered_component, "onMouseLeave")
+
+            if newly_hovered:
+                if "onMouseEnter" in newly_hovered.definition.methods:
+                    vm.call_method_on_instance(newly_hovered, "onMouseEnter")
+
+            self.hovered_component = newly_hovered
 
     def _find_hit_component_recursive(self, node: dict, mx: int, my: int):
         """

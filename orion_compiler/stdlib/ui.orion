@@ -30,16 +30,47 @@ component Button {
     height: 40;
     text: "Button";
     color: "#DDDDDD";
+    hover_color: "#EEEEEE";
     onClick: nil;
 
+    state: {
+        "is_hovering": false
+    };
+
+    function onMouseEnter() {
+        this.state["is_hovering"] = true;
+    }
+
+    function onMouseLeave() {
+        this.state["is_hovering"] = false;
+    }
+
     function render() {
+        var current_color = this.color;
+        if (this.state["is_hovering"]) {
+            current_color = this.hover_color;
+        }
+
         // Draw the box for the button background
         draw.box({
             x: this.x,
             y: this.y,
             width: this.width,
             height: this.height,
-            color: this.color
+            color: current_color
+        });
+
+        // Draw the text centered on the button
+        var text_width = draw.measure_text(this.text, 16);
+        var text_x = this.x + (this.width - text_width) / 2;
+        var text_y = this.y + (this.height / 2) + 6; // Approximate vertical center
+
+        draw.text({
+            x: text_x,
+            y: text_y,
+            text: this.text,
+            color: "#000000",
+            fontSize: 16
         });
     }
 }

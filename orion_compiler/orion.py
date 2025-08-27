@@ -102,7 +102,7 @@ class Orion:
         if result != InterpretResult.OK:
             self.had_runtime_error = True
 
-    def run_file_with_dependencies(self, entry_path: str, output_path: str = None, test_click_coords: tuple = None):
+    def run_file_with_dependencies(self, entry_path: str, output_path: str = None, test_events: list = None):
         """
         Resolves dependencies, then compiles and runs an Orion script from a file.
         This is the main entry point for running applications.
@@ -134,9 +134,9 @@ class Orion:
                 return
 
             # Step 3: Run in GUI, Headless, or Test mode
-            if test_click_coords:
-                output_file = output_path if output_path else "test_output.png"
-                self._run_test_mode(app_instance, test_click_coords, output_file)
+            if test_events:
+                output_prefix = output_path if output_path else "test_output"
+                self._run_test_mode(app_instance, test_events, output_prefix)
             elif output_path:
                 self._run_headless_mode(app_instance, output_path)
             else:
@@ -262,29 +262,46 @@ class Orion:
         renderer.process_commands(self.vm.draw_commands)
         renderer.save_to_file(output_path)
 
-    def _run_test_mode(self, app_instance: OrionComponentInstance, click_coords: tuple, output_path: str):
-        # ... [omitted for brevity, same as before]
-        print(f"INFO: Running in automated test mode. Output will be saved to {output_path}")
+    def _run_test_mode(self, app_instance: OrionComponentInstance, events: list, output_path_prefix: str):
+        """Runs a test by simulating a sequence of events and saving an image after each one."""
+        print(f"INFO: Running in automated test mode. Output prefix: {output_path_prefix}")
         width = app_instance.fields.get('width', 800)
         height = app_instance.fields.get('height', 600)
+
         renderer = GraphicalRenderer(width, height)
         dispatcher = EventDispatcher()
+
+        # 1. Initial render
         self.vm.draw_commands = []
         self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
-        print(f"INFO: Simulating click at {click_coords}")
-        event = sdl2.SDL_Event()
-        event.type = sdl2.SDL_MOUSEBUTTONDOWN
-        event.button.button = sdl2.SDL_BUTTON_LEFT
-        event.button.x = click_coords[0]
-        event.button.y = click_coords[1]
-        dispatcher.dispatch(event, self.vm, self.scene_graph)
-        app_instance.dirty = True
-        if app_instance.dirty:
-            self.vm.draw_commands = []
-            self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
-            renderer.process_commands(self.vm.draw_commands)
-            app_instance.dirty = False
-        renderer.save_to_file(output_path)
+        renderer.process_commands(self.vm.draw_commands)
+        renderer.save_to_file(f"{output_path_prefix}_0_initial.png")
+
+        # 2. Simulate events
+        for i, event_def in enumerate(events):
+            event = sdl2.SDL_Event()
+            if event_def["type"] == "move":
+                event.type = sdl2.SDL_MOUSEMOTION
+                event.motion.x = event_def["x"]
+                event.motion.y = event_def["y"]
+                print(f"INFO: Simulating mouse move to ({event_def['x']}, {event_def['y']})")
+            elif event_def["type"] == "click":
+                event.type = sdl2.SDL_MOUSEBUTTONDOWN
+                event.button.button = sdl2.SDL_BUTTON_LEFT
+                event.button.x = event_def["x"]
+                event.button.y = event_def["y"]
+                print(f"INFO: Simulating click at ({event_def['x']}, {event_def['y']})")
+
+            dispatcher.dispatch(event, self.vm, self.scene_graph)
+
+            app_instance.dirty = True
+            if app_instance.dirty:
+                self.vm.draw_commands = []
+                self.scene_graph = self._build_scene_graph(app_instance, 0, 0)
+                renderer.process_commands(self.vm.draw_commands)
+                app_instance.dirty = False
+
+            renderer.save_to_file(f"{output_path_prefix}_{i+1}_{event_def['type']}.png")
 
     def run_prompt(self):
         # ... [omitted for brevity, same as before]
@@ -311,30 +328,30 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         script_path = sys.argv[1]
         output_path = None
-        test_click_coords = None
+        test_events = None
 
         # Basic command line parsing
         try:
-            # Note: sys.argv for a module is ['orion_compiler/orion.py', arg1, arg2, ...]
-            # So we need to adjust indexing if run with -m
             args = sys.argv[1:]
-
             script_path = args[0]
 
             if '--output' in args:
                 output_path = args[args.index('--output') + 1]
-            if '--test-click' in args:
-                coords_str = args[args.index('--test-click') + 1]
-                x_str, y_str = coords_str.split(',')
-                test_click_coords = (int(x_str), int(y_str))
+            if '--test-events' in args:
+                events_str = args[args.index('--test-events') + 1]
+                test_events = []
+                for event_part in events_str.split(';'):
+                    type_part, coords_part = event_part.split(':')
+                    x_str, y_str = coords_part.split(',')
+                    test_events.append({"type": type_part, "x": int(x_str), "y": int(y_str)})
         except (ValueError, IndexError):
-            print("Usage: python -m orion_compiler.orion <script> [--output path] [--test-click x,y]")
+            print("Usage: python -m orion_compiler.orion <script> [--output prefix] [--test-events 'type:x,y;...']")
             sys.exit(64)
 
         orion.run_file_with_dependencies(
             script_path,
             output_path=output_path,
-            test_click_coords=test_click_coords
+            test_events=test_events
         )
         if orion.had_error: sys.exit(65)
         if orion.had_runtime_error: sys.exit(70)
