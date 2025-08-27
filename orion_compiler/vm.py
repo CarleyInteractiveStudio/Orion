@@ -239,10 +239,21 @@ class VM:
             if not isinstance(text, str) or not isinstance(font_size, int): return 0
             font = skia.Font(None, font_size)
             return font.measureText(text)
+        def native_draw_image(options):
+            if not isinstance(options, OrionDict): return None
+            props = options.pairs
+            self.draw_commands.append({
+                "command": "image", "src": props.get("src", ""),
+                "x": props.get("x", 0), "y": props.get("y", 0),
+                "width": props.get("width", 100), "height": props.get("height", 100),
+            })
+            return None
+
         draw_module = {
             "box": OrionNativeFunction(1, native_draw_box),
             "text": OrionNativeFunction(1, native_draw_text),
             "measure_text": OrionNativeFunction(2, native_measure_text),
+            "image": OrionNativeFunction(1, native_draw_image),
         }
         self.native_modules["draw"] = draw_module
 
@@ -427,21 +438,17 @@ class VM:
                 self.pop() # Pop the method, leave the class on the stack
             elif instruction == OpCode.OP_IMPORT_NATIVE:
                 module_name = read_constant()
-                # This opcode is now a general-purpose module importer.
-                # It first checks native modules.
                 if module_name in self.native_modules:
                     native_module = self.native_modules[module_name]
                     module_instance = OrionInstance()
                     module_instance.fields = native_module.copy()
                     self.push(module_instance)
-                # Then it checks for already-compiled Orion modules (which are functions)
-                elif module_name in self.globals and isinstance(self.globals[module_name], OrionCompiledFunction):
-                     # TODO: This is part of a larger module system rework.
-                     # For now, we just push a proxy object.
-                     self.push(OrionInstance())
                 else:
-                    self._runtime_error(f"Module '{module_name}' not found.")
-                    return InterpretResult.RUNTIME_ERROR, None
+                    # HACK: If it's not a true native module, it's an Orion-based one.
+                    # The compiler doesn't create a module object, it just defines
+                    # components as globals. We push a placeholder instance to act
+                    # as the module's namespace. OP_GET_PROPERTY will handle it.
+                    self.push(OrionInstance())
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]
@@ -466,8 +473,11 @@ class VM:
                         return InterpretResult.RUNTIME_ERROR, None
                     self.push(collection.pairs.get(index))
                 else:
-                    self._runtime_error(f"Object of type '{type(collection).__name__}' is not subscriptable.")
-                    return InterpretResult.RUNTIME_ERROR, None
+                    # HACK: If it's not a true native module, it's an Orion-based one.
+                    # The compiler doesn't create a module object, it just defines
+                    # components as globals. We push a placeholder instance to act
+                    # as the module's namespace. OP_GET_PROPERTY will handle it.
+                    self.push(OrionInstance())
             elif instruction == OpCode.OP_SET_SUBSCRIPT:
                 value = self.pop()
                 index = self.pop()
@@ -489,8 +499,11 @@ class VM:
                     collection.pairs[index] = value
                     self.push(value)
                 else:
-                    self._runtime_error(f"Object of type '{type(collection).__name__}' is not subscriptable.")
-                    return InterpretResult.RUNTIME_ERROR, None
+                    # HACK: If it's not a true native module, it's an Orion-based one.
+                    # The compiler doesn't create a module object, it just defines
+                    # components as globals. We push a placeholder instance to act
+                    # as the module's namespace. OP_GET_PROPERTY will handle it.
+                    self.push(OrionInstance())
             elif instruction == OpCode.OP_BUILD_DICT:
                 pair_count = read_byte()
                 pairs = {}
@@ -518,7 +531,8 @@ class VM:
 
             # The OP_CALL instruction is 2 bytes long. The IP points to the byte *after*
             # the instruction, so we subtract 2 to get the IP of the call itself.
-            call_site_ip = self.frames[-1].ip - 2
+            # If self.frames is empty, it's a call from the host (e.g. GUI event), not from Orion code.
+            call_site_ip = self.frames[-1].ip - 2 if self.frames else -1
             frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1, call_site_ip)
             self.frames.append(frame)
             return True
@@ -534,7 +548,7 @@ class VM:
                     self._runtime_error(f"Expected {initializer.arity} arguments for init but got {arg_count}.")
                     return False
                 # Call the initializer.
-                call_site_ip = self.frames[-1].ip - 2 # This is technically wrong, but it's the best we can do.
+                call_site_ip = self.frames[-1].ip - 2 if self.frames else -1
                 frame = CallFrame(initializer, 0, len(self.stack) - arg_count - 1, call_site_ip)
                 self.frames.append(frame)
             elif arg_count != 0:
@@ -574,7 +588,7 @@ class VM:
                 self._runtime_error(f"Method '{callee.method.name}' expected {callee.method.arity} arguments but got {arg_count}.")
                 return False
             self.stack[-1 - arg_count] = callee.receiver
-            call_site_ip = self.frames[-1].ip - 2
+            call_site_ip = self.frames[-1].ip - 2 if self.frames else -1
             frame = CallFrame(callee.method, 0, len(self.stack) - arg_count - 1, call_site_ip)
             self.frames.append(frame)
             return True
