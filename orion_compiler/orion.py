@@ -95,34 +95,61 @@ class Orion:
         if is_layout_component and component_instance.definition.name == "Column":
             spacing = component_instance.fields.get('spacing', 0)
             padding = component_instance.fields.get('padding', 0)
-            current_y_offset = padding # Start with padding
+            align = component_instance.fields.get('align', 'start')
+            parent_width = component_instance.fields.get('width', 0)
+            current_y_offset = padding
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
                     if i > 0:
                         current_y_offset += spacing
-                    child_node = self._build_scene_graph(child_instance, base_abs_x + padding, base_abs_y + current_y_offset)
+
+                    child_width = child_instance.fields.get('width', 0)
+                    if child_width == 0 and child_instance.definition.name == 'Label':
+                        child_width = len(child_instance.fields.get('text', '')) * (child_instance.fields.get('fontSize', 16) * 0.6)
+
+                    x_offset = padding
+                    if align == 'center':
+                        x_offset = (parent_width - child_width) / 2
+                    elif align == 'end':
+                        x_offset = parent_width - child_width - padding
+
+                    child_node = self._build_scene_graph(child_instance, base_abs_x + x_offset, base_abs_y + current_y_offset)
                     if child_node:
                         node["children"].append(child_node)
                         child_height = child_node["height"]
                         if child_height == 0 and child_node["instance"].definition.name == 'Label':
                             child_height = child_node["instance"].fields.get('fontSize', 16) * 1.5
                         current_y_offset += child_height
+
         elif is_layout_component and component_instance.definition.name == "Row":
             spacing = component_instance.fields.get('spacing', 0)
             padding = component_instance.fields.get('padding', 0)
-            current_x_offset = padding # Start with padding
+            align = component_instance.fields.get('align', 'start')
+            parent_height = component_instance.fields.get('height', 0)
+            current_x_offset = padding
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
                     if i > 0:
                         current_x_offset += spacing
-                    child_node = self._build_scene_graph(child_instance, base_abs_x + current_x_offset, base_abs_y + padding)
+
+                    child_height = child_instance.fields.get('height', 0)
+                    if child_height == 0 and child_instance.definition.name == 'Label':
+                        child_height = child_instance.fields.get('fontSize', 16) * 1.5
+
+                    y_offset = padding
+                    if align == 'center':
+                        y_offset = (parent_height - child_height) / 2
+                    elif align == 'end':
+                        y_offset = parent_height - child_height - padding
+
+                    child_node = self._build_scene_graph(child_instance, base_abs_x + current_x_offset, base_abs_y + y_offset)
                     if child_node:
                         node["children"].append(child_node)
                         child_width = child_node["width"]
                         if child_width == 0 and child_node["instance"].definition.name == 'Label':
                             text = child_node["instance"].fields.get('text', '')
                             font_size = child_node["instance"].fields.get('fontSize', 16)
-                            child_width = len(text) * (font_size * 0.6)  # Rough estimate
+                            child_width = len(text) * (font_size * 0.6)
                         current_x_offset += child_width
         else:
             # Default behavior: children are positioned relative to the parent's origin.
