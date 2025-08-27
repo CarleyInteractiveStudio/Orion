@@ -2,9 +2,9 @@ import sys
 import io
 from contextlib import redirect_stderr
 
-from .lexer import Lexer
-from .parser import Parser
-from .compiler import compile as compile_source
+from . lexer import Lexer
+from . parser import Parser
+from . compiler import compile as compile_source
 
 def run_compiler_test(name, source_code, expected_error_fragment):
     """

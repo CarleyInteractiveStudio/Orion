@@ -1,6 +1,6 @@
 import sys
 from typing import Any
-from .tokens import Token
+from . tokens import Token
 
 def type_error(token: Token, message: str):
     """Reports a type error to stderr."""

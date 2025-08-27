@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Any, Optional
 
-from .tokens import Token
+from . tokens import Token
 
 
 # --- Visitor Pattern Definition ---
@@ -312,7 +312,6 @@ class Var(Stmt):
 
 @dataclass
 class Block(Stmt):
-    opening_brace: Token
     statements: List[Stmt]
 
     def accept(self, visitor: StmtVisitor):
@@ -321,7 +320,6 @@ class Block(Stmt):
 
 @dataclass
 class If(Stmt):
-    if_token: Token
     condition: Expr
     then_branch: Stmt
     else_branch: Optional[Stmt]
@@ -332,7 +330,6 @@ class If(Stmt):
 
 @dataclass
 class While(Stmt):
-    while_token: Token
     condition: Expr
     body: Stmt
 
@@ -370,7 +367,7 @@ class Return(Stmt):
 @dataclass
 class StyleProp(Stmt):
     name: Token
-    value: Expr
+    values: List[Token]
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_style_prop_stmt(self)

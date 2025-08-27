@@ -1,6 +1,6 @@
 import sys
-from .lexer import Lexer
-from .tokens import TokenType, Token
+from . lexer import Lexer
+from . tokens import TokenType, Token
 
 def run_test(name, source, expected_tokens):
     """Helper function to run a single lexer test case."""

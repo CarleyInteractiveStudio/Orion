@@ -1,4 +1,4 @@
-from .bytecode import Chunk, OpCode
+from . bytecode import Chunk, OpCode
 
 def disassemble_chunk(chunk: Chunk, name: str):
     """Prints a human-readable representation of a chunk of bytecode."""

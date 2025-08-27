@@ -1,132 +1,173 @@
 // Orion Standard UI Library
-// Version 0.2 (Rebuilt)
+// Version 0.1
 module ui;
 use draw;
 
-// A simple text label component.
+// A reusable, stateful button component.
+component Button {
+    // --- Default Properties ---
+    x: 0;
+    y: 0;
+    width: 150;
+    height: 50;
+    text: "Button";
+    color: "#3498DB";
+    onClick: nil;
+
+    // --- State ---
+    state: { "pressed": false };
+
+    // --- Methods ---
+    function render() {
+        var button_color = this.color;
+        if (this.state.pressed) {
+            button_color = "#2980B9";
+        }
+        draw.box({ x: this.x, y: this.y, width: this.width, height: this.height, color: button_color });
+        draw.text({ x: this.x + 20, y: this.y + 20, text: this.text, color: "#FFFFFF", fontSize: 18 });
+    }
+
+    function onClick() {
+        this.state.pressed = true;
+        if (this.onClick != nil) {
+            var callback = this.onClick;
+            callback();
+        }
+    }
+}
+
+
+// A simple Panel component for grouping other components.
+component Panel {
+    x: 0;
+    y: 0;
+    width: 400;
+    height: 300;
+    color: "#ECF0F1";
+    children: [];
+
+    function render() {
+        draw.box({ x: this.x, y: this.y, width: this.width, height: this.height, color: this.color });
+        return this.children;
+    }
+}
+
+
+// A simple text label.
 component Label {
     x: 0;
     y: 0;
     text: "Label";
-    color: "#000000";
+    color: "#2C3E50";
     fontSize: 16;
 
     function render() {
-        draw.text({
-            x: this.x,
-            y: this.y,
-            text: this.text,
-            color: this.color,
-            fontSize: this.fontSize
-        });
+        draw.text({ x: this.x, y: this.y, text: this.text, color: this.color, fontSize: this.fontSize });
     }
 }
 
-// A stateful checkbox component.
-component Checkbox {
+
+// A syntax-highlighting text input field component.
+component TextInput {
+    // --- Default Properties ---
     x: 0;
     y: 0;
-    size: 20;
-    width: 20;
-    height: 20;
-    label: "";
-    onChange: nil; // Callback function: (new_state: bool) => void
+    width: 700;
+    height: 500;
+    text: "component App {\n    text: \"Hello World!\"\n}";
+    fontSize: 18;
 
+    // --- State ---
     state: {
-        "is_checked": false
+        "text": "",
+        "cursor_pos": 0,
+        "is_focused": false,
+        "tokens": []
     };
+
+    // --- Methods ---
+
+    function onInit() {
+        this.state.text = this.text;
+        this.state.cursor_pos = this.state.text.length;
+        this._retokenize();
+    }
+
+    function _retokenize() {
+        this.state.tokens = lexer.tokenize(this.state.text);
+    }
+
+    function render() {
+        var bg_color = "#1E1E1E";
+        if (this.state.is_focused) {
+            bg_color = "#252526";
+        }
+        draw.box({ x: this.x, y: this.y, width: this.width, height: this.height, color: bg_color });
+
+        var theme = {
+            "KEYWORD": "#569CD6", "COMPONENT": "#4EC9B0", "FUNCTION": "#4EC9B0", "VAR": "#569CD6", "USE": "#C586C0",
+            "IDENTIFIER": "#9CDCFE",
+            "STRING": "#CE9178",
+            "NUMBER": "#B5CEA8",
+            "DEFAULT": "#D4D4D4"
+        };
+
+        var current_x = this.x + 10;
+        var current_y = this.y + 10;
+
+        var i = 0;
+        while (i < this.state.tokens.length) {
+            var token = this.state.tokens[i];
+            var color = theme.DEFAULT;
+            if (theme[token.type] != nil) {
+                color = theme[token.type];
+            }
+
+            draw.text({
+                x: current_x, y: current_y,
+                text: token.lexeme,
+                color: color,
+                fontSize: this.fontSize
+            });
+            current_x = current_x + draw.measure_text(token.lexeme, this.fontSize);
+            i = i + 1;
+        }
+
+        if (this.state.is_focused) {
+            var text_so_far = slice(this.state.text, 0, this.state.cursor_pos);
+            var cursor_x_offset = draw.measure_text(text_so_far, this.fontSize);
+            draw.box({
+                x: this.x + 10 + cursor_x_offset,
+                y: this.y + 8,
+                width: 2,
+                height: this.fontSize + 4,
+                color: "#AEAFAD"
+            });
+        }
+    }
 
     function onClick() {
-        this.state["is_checked"] = !(this.state["is_checked"]);
-        if (!(this.onChange == nil)) {
-            var callback = this.onChange;
-            callback(this.state["is_checked"]);
-        }
+        this.state.is_focused = true;
     }
 
-    function render() {
-        // Draw the main box
-        draw.box({
-            x: this.x,
-            y: this.y,
-            width: this.size,
-            height: this.size,
-            color: "#AAAAAA"
-        });
-
-        // Draw the checkmark if checked
-        if (this.state["is_checked"]) {
-            draw.box({
-                x: this.x + 4,
-                y: this.y + 4,
-                width: this.size - 8,
-                height: this.size - 8,
-                color: "#3498DB"
-            });
-        }
-
-        // Draw the label text
-        if (!(this.label == "")) {
-            draw.text({
-                x: this.x + this.size + 10,
-                y: this.y + (this.size / 2) + 6,
-                text: this.label,
-                color: "#000000",
-                fontSize: 16
-            });
-        }
-    }
-}
-
-// A simple button component.
-component Button {
-    x: 0;
-    y: 0;
-    width: 100;
-    height: 40;
-    text: "Button";
-    color: "#DDDDDD";
-    hover_color: "#EEEEEE";
-    onClick: nil;
-
-    state: {
-        "is_hovering": false
-    };
-
-    function onMouseEnter() {
-        this.state["is_hovering"] = true;
+    function onBlur() {
+        this.state.is_focused = false;
     }
 
-    function onMouseLeave() {
-        this.state["is_hovering"] = false;
+    function onTextInput(event) {
+        var new_text = this.state.text + event.text;
+        this.state.text = new_text;
+        this.state.cursor_pos = this.state.text.length;
+        this._retokenize();
     }
 
-    function render() {
-        var current_color = this.color;
-        if (this.state["is_hovering"]) {
-            current_color = this.hover_color;
+    function onKeyDown(event) {
+        if (event.key == "backspace") {
+            if (this.state.text.length > 0) {
+                this.state.text = slice(this.state.text, 0, this.state.text.length - 1);
+                this.state.cursor_pos = this.state.text.length;
+                this._retokenize();
+            }
         }
-
-        // Draw the box for the button background
-        draw.box({
-            x: this.x,
-            y: this.y,
-            width: this.width,
-            height: this.height,
-            color: current_color
-        });
-
-        // Draw the text centered on the button
-        var text_width = draw.measure_text(this.text, 16);
-        var text_x = this.x + (this.width - text_width) / 2;
-        var text_y = this.y + (this.height / 2) + 6; // Approximate vertical center
-
-        draw.text({
-            x: text_x,
-            y: text_y,
-            text: this.text,
-            color: "#000000",
-            fontSize: 16
-        });
     }
 }

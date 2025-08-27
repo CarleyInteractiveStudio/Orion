@@ -1,7 +1,4 @@
 import skia
-import io
-import requests
-from PIL import Image
 
 class GraphicalRenderer:
     """
@@ -25,41 +22,6 @@ class GraphicalRenderer:
                 self._draw_box(command)
             elif cmd_type == "text":
                 self._draw_text(command)
-            elif cmd_type == "image":
-                self._draw_image(command)
-
-    def _draw_image(self, command: dict):
-        """Loads an image from a source and draws it on the canvas."""
-        src = command.get("src")
-        if not src:
-            return
-
-        image_data = None
-        try:
-            if src.startswith(('http://', 'https://')):
-                response = requests.get(src, timeout=5)
-                response.raise_for_status()
-                image_data = io.BytesIO(response.content)
-            else:
-                image_data = src
-
-            pil_image = Image.open(image_data).convert('RGBA')
-            skia_image = skia.Image.frombytes(
-                pil_image.tobytes(),
-                pil_image.size,
-                skia.kRGBA_8888_ColorType
-            )
-
-            if skia_image:
-                dest_rect = skia.Rect.MakeXYWH(
-                    command.get("x", 0), command.get("y", 0),
-                    command.get("width", 100), command.get("height", 100)
-                )
-                self.canvas.drawImageRect(skia_image, dest_rect)
-
-        except Exception as e:
-            print(f"ERROR: Could not load or draw image from '{src}': {e}")
-
 
     def _draw_box(self, command: dict):
         """Draws a filled rectangle on the canvas."""

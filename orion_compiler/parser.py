@@ -82,14 +82,11 @@ class Parser:
         if self._match(TokenType.WHILE):
             return self._while_statement()
         if self._match(TokenType.LEFT_BRACE):
-            opening_brace = self._previous()
-            statements = self._block()
-            return ast.Block(opening_brace, statements)
+            return ast.Block(self._block())
         return self._expression_statement()
 
     def _if_statement(self) -> ast.Stmt:
         """Parses an if-else statement."""
-        if_token = self._previous()  # The 'if' token was just matched.
         self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.")
         condition = self._expression()
         self._consume(TokenType.RIGHT_PAREN, "Expect ')' after if condition.")
@@ -99,10 +96,9 @@ class Parser:
         if self._match(TokenType.ELSE):
             else_branch = self._statement()
 
-        return ast.If(if_token, condition, then_branch, else_branch)
+        return ast.If(condition, then_branch, else_branch)
 
     def _for_statement(self) -> ast.Stmt:
-        for_token = self._previous()
         self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'for'.")
 
         # Initializer
@@ -130,26 +126,25 @@ class Parser:
 
         # Desugaring
         if increment is not None:
-            body = ast.Block(for_token, statements=[body, ast.Expression(increment)])
+            body = ast.Block(statements=[body, ast.Expression(increment)])
 
         if condition is None:
             condition = ast.Literal(True)
-        body = ast.While(for_token, condition, body)
+        body = ast.While(condition, body)
 
         if initializer is not None:
-            body = ast.Block(for_token, statements=[initializer, body])
+            body = ast.Block(statements=[initializer, body])
 
         return body
 
     def _while_statement(self) -> ast.Stmt:
         """Parses a while loop."""
-        while_token = self._previous()
         self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'.")
         condition = self._expression()
         self._consume(TokenType.RIGHT_PAREN, "Expect ')' after while condition.")
         body = self._statement()
 
-        return ast.While(while_token, condition, body)
+        return ast.While(condition, body)
 
     def _return_statement(self) -> ast.Stmt:
         """Parses a return statement."""
@@ -257,14 +252,23 @@ class Parser:
         return ast.StateBlock(name, props)
 
     def _style_property(self) -> ast.Stmt:
-        """Parses a style property like 'name: <expression>;'."""
+        """Parses a style property like 'name: value1, value2;'."""
         name = self._consume(TokenType.IDENTIFIER, "Expect property name.")
         self._consume(TokenType.COLON, "Expect ':' after property name.")
 
-        value = self._expression()
+        values = []
+        while not self._check(TokenType.SEMICOLON) and not self._is_at_end():
+            if len(values) > 0 and self._peek().token_type != TokenType.COMMA:
+                pass
+
+            if self._peek().token_type == TokenType.COMMA:
+                 self._consume(TokenType.COMMA, "Unexpected comma.")
+                 continue
+
+            values.append(self._advance())
 
         self._consume(TokenType.SEMICOLON, "Expect ';' after property value.")
-        return ast.StyleProp(name, value)
+        return ast.StyleProp(name, values)
 
     def _check_next(self, token_type: TokenType) -> bool:
         """Checks the type of the token after the current one."""
