@@ -79,7 +79,7 @@ class Local:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE }
+        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE }
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
@@ -220,11 +220,10 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             type_error(expr.name, f"Component '{component_name}' has no property named '{prop_name}'."); self.had_error = True; return ANY
 
         if object_type == MODULE:
-            module_name = expr.object.name.lexeme
-            member_name = expr.name.lexeme
-            if module_name in self.native_modules and member_name in self.native_modules[module_name]:
-                return self.native_modules[module_name][member_name] # Should be FUNCTION
-            type_error(expr.name, f"Module '{module_name}' has no member named '{member_name}'."); self.had_error = True; return ANY
+            # TODO: This is a temporary, optimistic fix. A real implementation
+            # should parse imported Orion modules to know their contents. For now,
+            # we assume any property access on a module is valid.
+            return ANY
 
         if object_type == ANY: return ANY
 

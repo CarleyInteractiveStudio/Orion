@@ -1,0 +1,10 @@
+// Orion Standard Layout Library
+// Version 0.1
+module layout;
+
+// A component that arranges its children in a vertical column.
+// The layout logic is handled by the renderer.
+component Column {
+    children: [];
+    spacing: 0;
+}

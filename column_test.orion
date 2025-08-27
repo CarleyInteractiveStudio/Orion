@@ -1,0 +1,27 @@
+// Test file for the new Column component
+use ui;
+use layout;
+
+component App {
+    function render() {
+        return [
+            ui.Panel({
+                "x": 50, "y": 50, "width": 400, "height": 500, "color": "#F5F5F5",
+                "children": [
+                    layout.Column({
+                        "spacing": 10,
+                        "children": [
+                            ui.Label({ "text": "First Item", "fontSize": 24, "color": "#E74C3C" }),
+                            ui.Label({ "text": "Second Item", "fontSize": 24, "color": "#2ECC71" }),
+                            ui.Panel({ "width": 300, "height": 100, "color": "#3498DB" }),
+                            ui.Label({ "text": "Third Item after Panel", "fontSize": 24, "color": "#F1C40F" })
+                        ]
+                    })
+                ]
+            })
+        ];
+    }
+}
+
+// Instantiate the App component to make it runnable
+var App = App({});

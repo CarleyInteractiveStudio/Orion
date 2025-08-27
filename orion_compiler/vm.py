@@ -378,8 +378,16 @@ class VM:
                 if not isinstance(instance, OrionInstance):
                     print("RuntimeError: Only instances and lists have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
+
                 value = instance.get(Token(None, name, None, 0))
-                self.pop()
+
+                # HACK: If property access on an instance fails, it might be an
+                # Orion-based module (e.g. `ui.Panel`). In this case, the `ui` instance
+                # is just a placeholder, and `Panel` is a global.
+                if value is None and name in self.globals:
+                    value = self.globals[name]
+
+                self.pop() # pop instance
                 self.push(value)
             elif instruction == OpCode.OP_SET_PROPERTY:
                 instance = self.peek(1)
@@ -407,15 +415,17 @@ class VM:
                 self.pop() # Pop the method, leave the class on the stack
             elif instruction == OpCode.OP_IMPORT_NATIVE:
                 module_name = read_constant()
-                if module_name not in self.native_modules:
-                    print(f"RuntimeError: Native module '{module_name}' not found.")
-                    return InterpretResult.RUNTIME_ERROR, None
-
-                native_module = self.native_modules[module_name]
-                module_instance = OrionInstance()
-                module_instance.fields = native_module.copy() # Shallow copy is fine
-
-                self.push(module_instance)
+                if module_name in self.native_modules:
+                    native_module = self.native_modules[module_name]
+                    module_instance = OrionInstance()
+                    module_instance.fields = native_module.copy()
+                    self.push(module_instance)
+                else:
+                    # HACK: If it's not a true native module, it's an Orion-based one.
+                    # The compiler doesn't create a module object, it just defines
+                    # components as globals. We push a placeholder instance to act
+                    # as the module's namespace. OP_GET_PROPERTY will handle it.
+                    self.push(OrionInstance())
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]

@@ -29,16 +29,8 @@ class Orion:
         Runs a piece of Orion source code. If a renderable 'App' component
         is found, it opens a window and begins the event loop.
         """
-        lexer = Lexer(source)
-        tokens = lexer.scan_tokens()
-
-        parser = Parser(tokens)
-        statements = parser.parse()
-
-        if not statements and len(tokens) > 1:
-            return
-
-        main_function = compile_source(statements)
+        # The compile function handles lexing and parsing internally.
+        main_function = compile_source(source)
 
         if main_function is None:
             self.had_error = True
@@ -60,36 +52,72 @@ class Orion:
         and builds a 'scene graph' - a tree of dictionaries containing the
         instance, its absolute coordinates, and its children.
         This also populates the vm.draw_commands list as a side effect.
+        Handles special layout components like 'Column'.
         """
-        if "render" not in component_instance.definition.methods:
-            return None
-
-        # The component's own position is relative to its parent's offset.
-        abs_x = offset_x + component_instance.fields.get('x', 0)
-        abs_y = offset_y + component_instance.fields.get('y', 0)
-
-        commands_before = len(self.vm.draw_commands)
-        children = self.vm.call_method_on_instance(component_instance, "render")
-
-        # Adjust the coordinates of the new commands by the component's absolute position.
-        for i in range(commands_before, len(self.vm.draw_commands)):
-            command = self.vm.draw_commands[i]
-            command['x'] += abs_x
-            command['y'] += abs_y
+        # Determine the component's absolute position.
+        # This position is the base for its children's layout.
+        base_abs_x = offset_x + component_instance.fields.get('x', 0)
+        base_abs_y = offset_y + component_instance.fields.get('y', 0)
 
         node = {
             "instance": component_instance,
-            "x": abs_x,
-            "y": abs_y,
+            "x": base_abs_x,
+            "y": base_abs_y,
             "width": component_instance.fields.get('width', 0),
             "height": component_instance.fields.get('height', 0),
             "children": []
         }
 
-        if isinstance(children, OrionList):
-            for child in children.elements:
-                if isinstance(child, OrionComponentInstance):
-                    child_node = self._build_scene_graph(child, abs_x, abs_y)
+        # Get the list of child instances to process
+        children_to_process = []
+        is_layout_component = component_instance.definition.name == "Column"
+
+        if is_layout_component:
+            children_field = component_instance.fields.get("children")
+            if isinstance(children_field, OrionList):
+                children_to_process = children_field.elements
+        elif "render" in component_instance.definition.methods:
+            commands_before = len(self.vm.draw_commands)
+            rendered_output = self.vm.call_method_on_instance(component_instance, "render")
+
+            # Adjust the coordinates of any new draw commands by the component's absolute position.
+            for i in range(commands_before, len(self.vm.draw_commands)):
+                command = self.vm.draw_commands[i]
+                command['x'] += base_abs_x
+                command['y'] += base_abs_y
+
+            if isinstance(rendered_output, OrionList):
+                children_to_process = rendered_output.elements
+        else:
+            # No children to process if it's not a layout component and has no render method.
+            return node # Return the node itself, but with no children
+
+        # Process the children, applying layout logic if necessary
+        if is_layout_component and component_instance.definition.name == "Column":
+            spacing = component_instance.fields.get('spacing', 0)
+            current_y_offset = 0
+            for i, child_instance in enumerate(children_to_process):
+                if isinstance(child_instance, OrionComponentInstance):
+                    # Add spacing before every element except the first one
+                    if i > 0:
+                        current_y_offset += spacing
+
+                    # For Column, children are stacked vertically.
+                    child_node = self._build_scene_graph(child_instance, base_abs_x, base_abs_y + current_y_offset)
+                    if child_node:
+                        node["children"].append(child_node)
+
+                        # Update the y_offset for the next child by its height
+                        child_height = child_node["height"]
+                        if child_height == 0 and child_node["instance"].definition.name == 'Label':
+                            # Estimate height for labels if not specified
+                            child_height = child_node["instance"].fields.get('fontSize', 16) * 1.5
+                        current_y_offset += child_height
+        else:
+            # Default behavior: children are positioned relative to the parent's origin.
+            for child_instance in children_to_process:
+                if isinstance(child_instance, OrionComponentInstance):
+                    child_node = self._build_scene_graph(child_instance, base_abs_x, base_abs_y)
                     if child_node:
                         node["children"].append(child_node)
 
