@@ -8,3 +8,10 @@ component Column {
     children: [];
     spacing: 0;
 }
+
+// A component that arranges its children in a horizontal row.
+// The layout logic is handled by the renderer.
+component Row {
+    children: [];
+    spacing: 0;
+}

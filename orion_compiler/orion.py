@@ -70,7 +70,7 @@ class Orion:
 
         # Get the list of child instances to process
         children_to_process = []
-        is_layout_component = component_instance.definition.name == "Column"
+        is_layout_component = component_instance.definition.name in ("Column", "Row")
 
         if is_layout_component:
             children_field = component_instance.fields.get("children")
@@ -98,21 +98,31 @@ class Orion:
             current_y_offset = 0
             for i, child_instance in enumerate(children_to_process):
                 if isinstance(child_instance, OrionComponentInstance):
-                    # Add spacing before every element except the first one
                     if i > 0:
                         current_y_offset += spacing
-
-                    # For Column, children are stacked vertically.
                     child_node = self._build_scene_graph(child_instance, base_abs_x, base_abs_y + current_y_offset)
                     if child_node:
                         node["children"].append(child_node)
-
-                        # Update the y_offset for the next child by its height
                         child_height = child_node["height"]
                         if child_height == 0 and child_node["instance"].definition.name == 'Label':
-                            # Estimate height for labels if not specified
                             child_height = child_node["instance"].fields.get('fontSize', 16) * 1.5
                         current_y_offset += child_height
+        elif is_layout_component and component_instance.definition.name == "Row":
+            spacing = component_instance.fields.get('spacing', 0)
+            current_x_offset = 0
+            for i, child_instance in enumerate(children_to_process):
+                if isinstance(child_instance, OrionComponentInstance):
+                    if i > 0:
+                        current_x_offset += spacing
+                    child_node = self._build_scene_graph(child_instance, base_abs_x + current_x_offset, base_abs_y)
+                    if child_node:
+                        node["children"].append(child_node)
+                        child_width = child_node["width"]
+                        if child_width == 0 and child_node["instance"].definition.name == 'Label':
+                            text = child_node["instance"].fields.get('text', '')
+                            font_size = child_node["instance"].fields.get('fontSize', 16)
+                            child_width = len(text) * (font_size * 0.6)  # Rough estimate
+                        current_x_offset += child_width
         else:
             # Default behavior: children are positioned relative to the parent's origin.
             for child_instance in children_to_process:
