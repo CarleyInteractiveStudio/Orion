@@ -48,6 +48,7 @@ class VM:
         self._init_json_module()
         self._init_http_module()
         self._init_draw_module()
+        self._init_fs_module()
 
     def _define_native(self, name: str, arity: int, func):
         self.globals[name] = OrionNativeFunction(arity, func)
@@ -569,3 +570,38 @@ class VM:
         b = self.pop()
         a = self.pop()
         self.push(op_func(a, b))
+
+    def _init_fs_module(self):
+        def native_fs_read_text(path):
+            if not isinstance(path, str): return None
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            except FileNotFoundError:
+                return None
+
+        def native_fs_write_text(path, content):
+            if not isinstance(path, str) or not isinstance(content, str): return None
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return None
+
+        def native_fs_exists(path):
+            if not isinstance(path, str): return False
+            return os.path.exists(path)
+
+        def native_fs_list_dir(path):
+            if not isinstance(path, str): return None
+            try:
+                items = os.listdir(path)
+                return OrionList(items)
+            except FileNotFoundError:
+                return None
+
+        fs_module = {
+            "read_text": OrionNativeFunction(1, native_fs_read_text),
+            "write_text": OrionNativeFunction(2, native_fs_write_text),
+            "exists": OrionNativeFunction(1, native_fs_exists),
+            "list_dir": OrionNativeFunction(1, native_fs_list_dir),
+        }
+        self.native_modules["fs"] = fs_module
