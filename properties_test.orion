@@ -1,0 +1,12 @@
+class Person {
+  sayName() {
+    print(this.name);
+  }
+}
+
+var person = Person();
+person.name = "Jules";
+person.sayName(); // Should print "Jules"
+
+// Also test getting the property directly
+print(person.name); // Should also print "Jules"
