@@ -406,8 +406,8 @@ class VM:
                 klass.methods[method_name] = method
                 self.pop() # Pop the method, leave the class on the stack
             elif instruction == OpCode.OP_INHERIT:
-                superclass = self.peek(1)
-                subclass = self.peek(0)
+                superclass = self.peek(0)
+                subclass = self.peek(1)
                 if not isinstance(superclass, OrionClass):
                     print("RuntimeError: Superclass must be a class.")
                     return InterpretResult.RUNTIME_ERROR, None
@@ -415,9 +415,10 @@ class VM:
                 subclass.superclass = superclass
                 # Copy methods from superclass to subclass
                 for method_name, method in superclass.methods.items():
-                    subclass.methods[method_name] = method
+                    if method_name not in subclass.methods:
+                        subclass.methods[method_name] = method
 
-                self.pop() # Pop the superclass, leaving the subclass on top
+                self.pop()
             elif instruction == OpCode.OP_GET_SUPER:
                 method_name = read_constant()
                 instance = self.pop()

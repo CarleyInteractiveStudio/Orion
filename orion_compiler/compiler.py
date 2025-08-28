@@ -502,7 +502,17 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
 
     def visit_super_expr(self, expr: ast.Super):
-        self.visit_this_expr(ast.This(expr.keyword))
+        if self.type != 'method':
+            print("Compile Error: Cannot use 'super' outside of a method."); self.had_error = True; return
+
+        # When using 'super', we're looking up a method on the superclass,
+        # but it's still bound to the current instance, 'this'.
+        # So, we first need to load 'this' onto the stack.
+        # The 'this' keyword is passed to _resolve_local to find its slot.
+        this_token = Token(TokenType.THIS, 'this', None, expr.keyword.line)
+        arg = self._resolve_local(this_token)
+
+        self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
         self._emit_opcode_and_constant_index(OpCode.OP_GET_SUPER, expr.method.lexeme)
 
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
