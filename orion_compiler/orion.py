@@ -8,9 +8,10 @@ import re
 
 from .lexer import Lexer
 from .parser import Parser
-from .compiler import compile as compile_source
+from .compiler import compile as compile_source, TypeAnalyzer
 from .vm import VM, InterpretResult
 from .objects import OrionComponentInstance, OrionList
+from .orion_types import FUNCTION
 from .renderer import GraphicalRenderer
 from .event_dispatcher import EventDispatcher
 
@@ -85,11 +86,15 @@ class Orion:
     def run_file_with_dependencies(self, entry_path: str, output_path: str = None, test_events: list = None):
         try:
             ordered_files = self._resolve_dependencies(entry_path)
+            from .vm import VM
+            temp_vm = VM()
+            native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
+            type_analyzer = TypeAnalyzer(native_module_specs)
             for path in ordered_files:
                 print(f"INFO: Loading module '{os.path.basename(path)}'...")
                 with open(path, 'r', encoding='utf-8') as f:
                     source = f.read()
-                compiled_function = compile_source(source)
+                compiled_function = compile_source(source, type_analyzer=type_analyzer)
                 if compiled_function is None:
                     self.had_error = True
                     print(f"ERROR: Compilation failed for '{path}'.")

@@ -4,7 +4,7 @@ from . import ast_nodes as ast
 from .bytecode import Chunk, OpCode
 from .tokens import Token, TokenType
 from .objects import OrionCompiledFunction, OrionComponentDef
-from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
+from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT, ComponentType
 from .errors import type_error
 from .lexer import Lexer
 from .parser import Parser
@@ -21,14 +21,13 @@ def _find_module(module_name: str) -> str | None:
     return None
 
 # --- Top-Level Compile Function ---
-def compile(source: str) -> OrionCompiledFunction | None:
-    # This is a bit of a hack to get native module definitions to the analyzer.
-    # In a larger system, this would come from a shared configuration.
+def compile(source: str, type_analyzer: 'TypeAnalyzer' = None) -> OrionCompiledFunction | None:
     from .vm import VM
-    temp_vm = VM()
-    native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
+    if type_analyzer is None:
+        temp_vm = VM()
+        native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
+        type_analyzer = TypeAnalyzer(native_module_specs)
 
-    type_analyzer = TypeAnalyzer(native_module_specs)
     module_cache = {}
     try:
         main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
@@ -85,13 +84,13 @@ class Upvalue:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL }
+        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL, "Column": COMPONENT, "Row": COMPONENT }
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
         self.scope_depth: int = 0
         self.had_error = False
-        self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, }
+        self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
     def analyze(self, statements: list[ast.Stmt]):
         for stmt in statements: self._analyze_stmt(stmt)
     def _analyze_stmt(self, stmt: ast.Stmt): stmt.accept(self)
@@ -420,8 +419,13 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT)
     def visit_binary_expr(self, expr: ast.Binary):
         self._compile_expr(expr.left); self._compile_expr(expr.right)
-        op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
-        self._emit_byte(op_map[expr.operator.token_type.name])
+        op_type = expr.operator.token_type.name
+        if op_type == 'BANG_EQUAL':
+            self._emit_byte(OpCode.OP_EQUAL)
+            self._emit_byte(OpCode.OP_NOT)
+        else:
+            op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
+            self._emit_byte(op_map[op_type])
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
         if arg != -1:
@@ -591,14 +595,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
     def visit_use_stmt(self, stmt: ast.UseStmt):
-        module_name = stmt.name.lexeme
-
-        # Emit code to load the module object
-        self._emit_opcode_and_constant_index(OpCode.OP_IMPORT_NATIVE, module_name)
-
-        # Define a global variable for the module
-        bind_name = stmt.alias.lexeme if stmt.alias else module_name
-        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, bind_name)
+        # The dependency resolver in orion.py handles loading modules.
+        # This statement is just for dependency analysis.
+        pass
     def visit_list_literal_expr(self, expr: ast.ListLiteral):
         for element in expr.elements: self._compile_expr(element)
         self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements))

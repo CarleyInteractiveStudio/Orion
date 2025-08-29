@@ -53,6 +53,9 @@ class VM:
         self._init_http_module()
         self._init_draw_module()
 
+        self.globals["Column"] = OrionComponentDef("Column", [])
+        self.globals["Row"] = OrionComponentDef("Row", [])
+
     def _define_native(self, name: str, arity: int, func):
         self.globals[name] = OrionNativeFunction(arity, func)
 
@@ -239,10 +242,25 @@ class VM:
             if not isinstance(text, str) or not isinstance(font_size, int): return 0
             font = skia.Font(None, font_size)
             return font.measureText(text)
+        def native_draw_push_clip_rect(options):
+            if not isinstance(options, OrionDict): return None
+            props = options.pairs
+            self.draw_commands.append({
+                "command": "push_clip_rect", "x": props.get("x", 0), "y": props.get("y", 0),
+                "width": props.get("width", 0), "height": props.get("height", 0),
+            })
+            return None
+
+        def native_draw_pop_clip_rect():
+            self.draw_commands.append({ "command": "pop_clip_rect" })
+            return None
+
         draw_module = {
             "box": OrionNativeFunction(1, native_draw_box),
             "text": OrionNativeFunction(1, native_draw_text),
             "measure_text": OrionNativeFunction(2, native_measure_text),
+            "push_clip_rect": OrionNativeFunction(1, native_draw_push_clip_rect),
+            "pop_clip_rect": OrionNativeFunction(0, native_draw_pop_clip_rect),
         }
         self.native_modules["draw"] = draw_module
 

@@ -11,7 +11,7 @@ component Label {
     color: "#000000";
     fontSize: 16;
 
-    function render() {
+    render() {
         draw.text({
             x: this.x,
             y: this.y,
@@ -34,7 +34,7 @@ component Checkbox {
 
     state: { "is_checked": false };
 
-    function onClick() {
+    onClick() {
         this.state["is_checked"] = !(this.state["is_checked"]);
         if (!(this.onChange == nil)) {
             var callback = this.onChange;
@@ -42,7 +42,7 @@ component Checkbox {
         }
     }
 
-    function render() {
+    render() {
         draw.box({ x: this.x, y: this.y, width: this.size, height: this.size, color: "#AAAAAA" });
         if (this.state["is_checked"]) {
             draw.box({ x: this.x + 4, y: this.y + 4, width: this.size - 8, height: this.size - 8, color: "#3498DB" });
@@ -66,15 +66,15 @@ component Button {
 
     state: { "is_hovering": false };
 
-    function onMouseEnter() {
+    onMouseEnter() {
         this.state["is_hovering"] = true;
     }
 
-    function onMouseLeave() {
+    onMouseLeave() {
         this.state["is_hovering"] = false;
     }
 
-    function render() {
+    render() {
         var current_color = this.color;
         if (this.state["is_hovering"]) {
             current_color = this.hover_color;
@@ -100,7 +100,7 @@ component ScrollView {
         "content_height": 0.0 // Will be calculated by the layout engine
     };
 
-    function onMouseWheel(event) {
+    onMouseWheel(event) {
         // scroll speed
         var scroll_speed = 20;
         var new_scroll_y = this.state["scroll_y"] + (event.y * scroll_speed);
@@ -114,7 +114,7 @@ component ScrollView {
         this.state["scroll_y"] = new_scroll_y;
     }
 
-    function render() {
+    render() {
         // The ScrollView itself doesn't draw anything, it just provides a clipping
         // area and returns its children to be rendered by the layout engine.
         return this.children;

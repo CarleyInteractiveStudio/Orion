@@ -235,15 +235,37 @@ class Parser:
 
     def _component_body_statement(self) -> ast.Stmt:
         """Parses a statement inside a component body (method, style prop, or state block)."""
-        if self._match(TokenType.FUNCTION):
-            return self._function("method")
+        if self._check(TokenType.IDENTIFIER) and self._check_next(TokenType.LEFT_PAREN):
+            return self._method()
 
         if self._check(TokenType.IDENTIFIER) and self._check_next(TokenType.LEFT_BRACE):
             return self._state_block()
 
-        # For now, we assume anything else is a style property.
-        # We could add var/const declarations here later.
         return self._style_property()
+
+    def _method(self) -> ast.Function:
+        """Parses a method declaration (which does not have the 'function' keyword)."""
+        name = self._consume(TokenType.IDENTIFIER, "Expect method name.")
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after method name.")
+        parameters: List[ast.Param] = []
+        if not self._check(TokenType.RIGHT_PAREN):
+            while True:
+                if len(parameters) >= 255:
+                    self._error(self._peek(), "Can't have more than 255 parameters.")
+                param_name = self._consume(TokenType.IDENTIFIER, "Expect parameter name.")
+                param_type = None
+                if self._match(TokenType.COLON):
+                    param_type = self._type_annotation()
+                parameters.append(ast.Param(param_name, param_type))
+                if not self._match(TokenType.COMMA):
+                    break
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.")
+        return_type: Optional[ast.Expr] = None
+        if self._match(TokenType.COLON):
+            return_type = self._type_annotation()
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before method body.")
+        body = self._block()
+        return ast.Function(name, parameters, body, return_type)
 
     def _state_block(self) -> ast.Stmt:
         """Parses a nested state block like 'hover { ... }'."""
@@ -341,9 +363,9 @@ class Parser:
         return expr
 
     def _equality(self) -> ast.Expr:
-        """Parses an equality expression (==)."""
+        """Parses an equality expression (==, !=)."""
         expr = self._comparison()
-        while self._match(TokenType.EQUAL_EQUAL):
+        while self._match(TokenType.EQUAL_EQUAL, TokenType.BANG_EQUAL):
             operator = self._previous()
             right = self._comparison()
             expr = ast.Binary(expr, operator, right)

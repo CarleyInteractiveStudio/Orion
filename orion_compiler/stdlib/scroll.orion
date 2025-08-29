@@ -1,0 +1,46 @@
+use draw;
+use ui;
+
+component ScrollView {
+    x: 0;
+    y: 0;
+    width: 100;
+    height: 100;
+    contentWidth: 100;
+    contentHeight: 100;
+    child: nil;
+
+    state: {
+        scrollX: 0,
+        scrollY: 0
+    };
+
+    onMouseWheel(event) {
+        this.state.scrollY = this.state.scrollY + event.y * 10;
+
+        if (this.state.scrollY < 0) {
+            this.state.scrollY = 0;
+        }
+
+        if (this.state.scrollY > (this.contentHeight - this.height)) {
+            this.state.scrollY = this.contentHeight - this.height;
+        }
+    }
+
+    render() {
+        draw.push_clip_rect({
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height
+        });
+
+        if (this.child != nil) {
+            this.child.x = this.x - this.state.scrollX;
+            this.child.y = this.y - this.state.scrollY;
+            this.child.render();
+        }
+
+        draw.pop_clip_rect();
+    }
+}
