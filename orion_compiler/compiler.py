@@ -75,6 +75,12 @@ class Local:
     name: Token
     depth: int
     type: Type
+    is_captured: bool = False
+
+@dataclass
+class Upvalue:
+    index: int
+    is_local: bool
 
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
@@ -359,6 +365,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             self.type = "initializer"
 
         self.locals: list[Local] = []
+        self.upvalues: list[Upvalue] = []
         self.scope_depth: int = 0
         self.had_error = False
         func_name = function_stmt.name.lexeme if function_stmt.name else "<script>"
@@ -386,7 +393,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_byte(OpCode.OP_RETURN)
 
     def _end_compiler(self) -> OrionCompiledFunction:
-        self._emit_return(); return self.function
+        self._emit_return()
+        self.function.upvalue_count = len(self.upvalues)
+        return self.function
     def _make_constant(self, value) -> int: return self._current_chunk().add_constant(value)
     def _emit_constant(self, value):
         constant_idx = self._make_constant(value)
@@ -415,13 +424,25 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_byte(op_map[expr.operator.token_type.name])
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
-        if arg != -1: self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
-        else: self._emit_opcode_and_constant_index(OpCode.OP_GET_GLOBAL, expr.name.lexeme)
+        if arg != -1:
+            self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
+        else:
+            arg = self._resolve_upvalue(expr.name)
+            if arg != -1:
+                self._emit_bytes(OpCode.OP_GET_UPVALUE, arg)
+            else:
+                self._emit_opcode_and_constant_index(OpCode.OP_GET_GLOBAL, expr.name.lexeme)
     def visit_assign_expr(self, expr: ast.Assign):
         self._compile_expr(expr.value)
         arg = self._resolve_local(expr.name)
-        if arg != -1: self._emit_bytes(OpCode.OP_SET_LOCAL, arg)
-        else: self._emit_opcode_and_constant_index(OpCode.OP_SET_GLOBAL, expr.name.lexeme)
+        if arg != -1:
+            self._emit_bytes(OpCode.OP_SET_LOCAL, arg)
+        else:
+            arg = self._resolve_upvalue(expr.name)
+            if arg != -1:
+                self._emit_bytes(OpCode.OP_SET_UPVALUE, arg)
+            else:
+                self._emit_opcode_and_constant_index(OpCode.OP_SET_GLOBAL, expr.name.lexeme)
     def visit_var_stmt(self, stmt: ast.Var):
         self._compile_expr(stmt.initializer if stmt.initializer else ast.Literal(None))
         if self.scope_depth > 0: self._add_local(stmt.name, ANY); return
@@ -447,7 +468,13 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_function_stmt(self, stmt: ast.Function):
         compiler = Compiler(self, stmt, "function", self.type_analyzer, self.module_cache)
         function_obj = compiler._end_compiler()
-        self._emit_constant(function_obj)
+
+        self._emit_opcode_and_constant_index(OpCode.OP_CLOSURE, function_obj)
+
+        for upvalue in compiler.upvalues:
+            self._emit_byte(1 if upvalue.is_local else 0)
+            self._emit_byte(upvalue.index)
+
         if self.scope_depth > 0: self._add_local(stmt.name, FUNCTION)
         else: self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme)
     def visit_call_expr(self, expr: ast.Call):
@@ -469,12 +496,45 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def _end_scope(self):
         self.scope_depth -= 1
         while self.locals and self.locals[-1].depth > self.scope_depth:
-            self._emit_byte(OpCode.OP_POP); self.locals.pop()
+            if self.locals[-1].is_captured:
+                self._emit_byte(OpCode.OP_CLOSE_UPVALUE)
+            else:
+                self._emit_byte(OpCode.OP_POP)
+            self.locals.pop()
     def _add_local(self, name: Token, type: Type): self.locals.append(Local(name, self.scope_depth, type))
     def _resolve_local(self, name: Token) -> int:
         for i in range(len(self.locals) - 1, -1, -1):
             if name.lexeme == self.locals[i].name.lexeme: return i
         return -1
+
+    def _add_upvalue(self, index: int, is_local: bool) -> int:
+        for i, upvalue in enumerate(self.upvalues):
+            if upvalue.index == index and upvalue.is_local == is_local:
+                return i
+
+        if len(self.upvalues) == 256:
+            self.had_error = True
+            print("Too many closure variables in function.")
+            return 0
+
+        self.upvalues.append(Upvalue(index, is_local))
+        return len(self.upvalues) - 1
+
+    def _resolve_upvalue(self, name: Token) -> int:
+        if self.enclosing is None:
+            return -1
+
+        local = self.enclosing._resolve_local(name)
+        if local != -1:
+            self.enclosing.locals[local].is_captured = True
+            return self._add_upvalue(local, True)
+
+        upvalue = self.enclosing._resolve_upvalue(name)
+        if upvalue != -1:
+            return self._add_upvalue(upvalue, False)
+
+        return -1
+
     def _emit_jump(self, instruction: OpCode) -> int:
         self._emit_byte(instruction); self._emit_byte(0xff); self._emit_byte(0xff)
         return len(self._current_chunk().code) - 2

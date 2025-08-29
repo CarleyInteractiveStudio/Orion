@@ -1,0 +1,16 @@
+function makeCounter() {
+  var i = 0;
+  function count() {
+    i = i + 1;
+    print(i);
+  }
+  return count;
+}
+
+var counter = makeCounter();
+counter();
+counter();
+
+// Test with two counters to make sure they have their own 'i'
+var counter2 = makeCounter();
+counter2();

@@ -64,8 +64,14 @@ class OpCode(IntEnum):
     OP_INHERIT = 33
     OP_GET_SUPER = 34
 
+    # --- Closures ---
+    OP_CLOSURE = 35
+    OP_GET_UPVALUE = 36
+    OP_SET_UPVALUE = 37
+    OP_CLOSE_UPVALUE = 38
+
     # --- Modules ---
-    OP_IMPORT_NATIVE = 35
+    OP_IMPORT_NATIVE = 39
 
     # --- End of Execution ---
     # OP_RETURN now serves this purpose

@@ -10,9 +10,12 @@ import math
 import json
 import requests
 
+from . objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy, OrionClosure, OrionUpvalue
+
 @dataclass
 class CallFrame:
     function: OrionCompiledFunction
+    closure: OrionClosure
     ip: int
     slots_offset: int
 
@@ -26,6 +29,7 @@ class VM:
         self.frames: list[CallFrame] = []
         self.stack: list = []
         self.globals: dict = {}
+        self.open_upvalues: list = []
 
         def native_print(*args):
             print(*[str(arg) for arg in args])
@@ -245,8 +249,10 @@ class VM:
     def interpret(self, main_function: OrionCompiledFunction) -> InterpretResult:
         self.stack = []
         self.frames = []
-        self.stack.append(main_function)
-        frame = CallFrame(main_function, 0, 0)
+        # Wrap the top-level script in a closure so the VM can handle it uniformly.
+        closure = OrionClosure(main_function, [])
+        self.stack.append(closure)
+        frame = CallFrame(main_function, closure, 0, 1)
         self.frames.append(frame)
         return self._run()
 
@@ -435,6 +441,36 @@ class VM:
                 method = superclass.methods[method_name]
                 bound_method = OrionBoundMethod(instance, method)
                 self.push(bound_method)
+            elif instruction == OpCode.OP_CLOSURE:
+                function = read_constant()
+                closure = OrionClosure(function, [])
+                self.push(closure)
+                for i in range(function.upvalue_count):
+                    is_local = read_byte()
+                    index = read_byte()
+                    if is_local:
+                        upvalue = self._capture_upvalue(frame.slots_offset + index)
+                        closure.upvalues.append(upvalue)
+                    else:
+                        upvalue = frame.closure.upvalues[index]
+                        closure.upvalues.append(upvalue)
+            elif instruction == OpCode.OP_GET_UPVALUE:
+                slot = read_byte()
+                upvalue = frame.closure.upvalues[slot]
+                if upvalue.location == -1:
+                    self.push(upvalue.closed)
+                else:
+                    self.push(self.stack[upvalue.location])
+            elif instruction == OpCode.OP_SET_UPVALUE:
+                slot = read_byte()
+                upvalue = frame.closure.upvalues[slot]
+                if upvalue.location == -1:
+                    upvalue.closed = self.peek(0)
+                else:
+                    self.stack[upvalue.location] = self.peek(0)
+            elif instruction == OpCode.OP_CLOSE_UPVALUE:
+                self._close_upvalues(len(self.stack) - 1)
+                self.pop()
             elif instruction == OpCode.OP_IMPORT_NATIVE:
                 module_name = read_constant()
                 if module_name not in self.native_modules:
@@ -514,11 +550,11 @@ class VM:
             result = callee.func(*args)
             self.push(result)
             return True
-        elif isinstance(callee, OrionCompiledFunction):
-            if arg_count != callee.arity:
-                print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
+        elif isinstance(callee, OrionClosure):
+            if arg_count != callee.function.arity:
+                print(f"RuntimeError: Expected {callee.function.arity} arguments but got {arg_count}.")
                 return False
-            frame = CallFrame(callee, 0, len(self.stack) - arg_count - 1)
+            frame = CallFrame(callee.function, callee, 0, len(self.stack) - arg_count - 1)
             self.frames.append(frame)
             return True
         elif isinstance(callee, OrionClass):
@@ -589,3 +625,21 @@ class VM:
         b = self.pop()
         a = self.pop()
         self.push(op_func(a, b))
+
+    def _capture_upvalue(self, local_index: int):
+        for upvalue in self.open_upvalues:
+            if upvalue.location == local_index:
+                return upvalue
+
+        new_upvalue = OrionUpvalue(local_index)
+        self.open_upvalues.append(new_upvalue)
+        return new_upvalue
+
+    def _close_upvalues(self, last_slot: int):
+        for upvalue in reversed(self.open_upvalues):
+            if upvalue.location >= last_slot:
+                upvalue.closed = self.stack[upvalue.location]
+                upvalue.location = -1 # No longer on stack
+                self.open_upvalues.remove(upvalue)
+            else:
+                break

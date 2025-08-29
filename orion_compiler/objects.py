@@ -36,13 +36,32 @@ class OrionNativeFunction(OrionObject):
 
 class OrionCompiledFunction(OrionObject):
     """Represents a compiled function."""
-    def __init__(self, arity: int, chunk: Chunk, name: str):
+    def __init__(self, arity: int, chunk: Chunk, name: str, upvalue_count: int = 0):
         self.arity = arity
         self.chunk = chunk
         self.name = name
+        self.upvalue_count = upvalue_count
 
     def __str__(self) -> str:
         return f"<fn {self.name}>"
+
+class OrionUpvalue(OrionObject):
+    """Represents a variable captured by a closure."""
+    def __init__(self, location: int):
+        self.location = location
+        self.closed: Any = None
+
+    def __str__(self) -> str:
+        return f"<upvalue at {self.location}>"
+
+class OrionClosure(OrionObject):
+    """Represents a closure."""
+    def __init__(self, function: OrionCompiledFunction, upvalues: List['OrionUpvalue']):
+        self.function = function
+        self.upvalues = upvalues
+
+    def __str__(self) -> str:
+        return str(self.function)
 
 class OrionClass(OrionObject):
     """Represents a class definition at runtime."""
