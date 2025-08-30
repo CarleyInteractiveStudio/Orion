@@ -218,6 +218,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         from .orion_types import ComponentType
         if isinstance(object_type, ListType):
             if expr.name.lexeme == "length": return NUMBER
+            if expr.name.lexeme in ("forEach", "map"): return FUNCTION
             type_error(expr.name, f"Type 'list' has no property '{expr.name.lexeme}'."); self.had_error = True; return ANY
         if isinstance(object_type, ComponentType):
             component_name = object_type.name; prop_name = expr.name.lexeme

@@ -1,0 +1,15 @@
+// Test forEach
+print("Testing forEach:");
+var myList = [1, 2, 3];
+function printItem(item) {
+  print(item);
+}
+myList.forEach(printItem);
+
+// Test map
+print("Testing map:");
+function double(item) {
+  return item * 2;
+}
+var newList = myList.map(double);
+print(newList); // Should print [2, 4, 6]

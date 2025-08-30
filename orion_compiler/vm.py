@@ -56,6 +56,11 @@ class VM:
         self.globals["Column"] = OrionComponentDef("Column", [])
         self.globals["Row"] = OrionComponentDef("Row", [])
 
+        self.list_methods = {
+            "forEach": OrionNativeFunction(1, self._native_list_forEach),
+            "map": OrionNativeFunction(1, self._native_list_map),
+        }
+
     def _define_native(self, name: str, arity: int, func):
         self.globals[name] = OrionNativeFunction(arity, func)
 
@@ -272,7 +277,30 @@ class VM:
         self.stack.append(closure)
         frame = CallFrame(main_function, closure, 0, 1)
         self.frames.append(frame)
-        return self._run()
+        return self._run() # stop_at_frame_count defaults to 0
+
+    def call_orion_function(self, closure: OrionClosure, args: list):
+        # This method is called from a native function to call back into Orion code.
+
+        # 1. Push the function and its arguments onto the stack.
+        self.push(closure)
+        for arg in args:
+            self.push(arg)
+
+        # 2. Set up the call frame.
+        if not self._call_value(closure, len(args)):
+            print("ERROR: Failed to set up re-entrant call.")
+            return None, False # Indicate failure
+
+        # 3. Run the VM until the called function returns.
+        # We know we're in a re-entrant call, so the frame count will be > 1.
+        initial_frame_count = len(self.frames)
+        result, last_value = self._run(stop_at_frame_count=initial_frame_count - 1)
+
+        if result == InterpretResult.OK:
+            return last_value, True
+        else:
+            return None, False
 
     def call_method_on_instance(self, instance: OrionComponentInstance, method_name: str, args: dict = None):
         if method_name not in instance.definition.methods: return None
@@ -285,10 +313,12 @@ class VM:
             self.push(orion_args)
             arg_count = 1
         if not self._call_value(bound_method, arg_count): return None
-        result, last_value = self._run()
+
+        initial_frame_count = len(self.frames)
+        result, last_value = self._run(stop_at_frame_count=initial_frame_count - 1)
         return last_value
 
-    def _run(self) -> (InterpretResult, Any):
+    def _run(self, stop_at_frame_count: int = 0) -> (InterpretResult, Any):
         frame = self.frames[-1]
         def read_byte():
             nonlocal frame
@@ -306,7 +336,8 @@ class VM:
             if instruction == OpCode.OP_RETURN:
                 result = self.pop()
                 self.frames.pop()
-                if not self.frames: return InterpretResult.OK, result
+                if len(self.frames) == stop_at_frame_count:
+                    return InterpretResult.OK, result
                 self.stack = self.stack[:frame.slots_offset]
                 self.push(result)
                 frame = self.frames[-1]
@@ -395,6 +426,12 @@ class VM:
                     if name == "length":
                         self.pop()
                         self.push(len(instance.elements))
+                        continue
+                    if name in self.list_methods:
+                        method = self.list_methods[name]
+                        bound_method = OrionBoundMethod(instance, method)
+                        self.pop() # pop instance
+                        self.push(bound_method)
                         continue
                     else:
                         print(f"RuntimeError: Type 'list' has no property '{name}'.")
@@ -583,11 +620,11 @@ class VM:
             # Look for an initializer.
             if "init" in callee.methods:
                 initializer = callee.methods["init"]
-                if arg_count != initializer.arity:
-                    print(f"RuntimeError: Expected {initializer.arity} arguments for init but got {arg_count}.")
+                if arg_count != initializer.function.arity:
+                    print(f"RuntimeError: Expected {initializer.function.arity} arguments for init but got {arg_count}.")
                     return False
                 # Call the initializer.
-                frame = CallFrame(initializer, 0, len(self.stack) - arg_count - 1)
+                frame = CallFrame(initializer.function, initializer, 0, len(self.stack) - arg_count - 1)
                 self.frames.append(frame)
             elif arg_count != 0:
                 # No initializer, so no arguments are allowed.
@@ -622,13 +659,29 @@ class VM:
             self.push(instance)
             return True
         elif isinstance(callee, OrionBoundMethod):
-            if arg_count != callee.method.arity:
-                print(f"RuntimeError: Method '{callee.method.name}' expected {callee.method.arity} arguments but got {arg_count}.")
-                return False
-            self.stack[-1 - arg_count] = callee.receiver
-            frame = CallFrame(callee.method, 0, len(self.stack) - arg_count - 1)
-            self.frames.append(frame)
-            return True
+            # The method is a closure for class methods, but a native function for list methods.
+            if isinstance(callee.method, OrionClosure):
+                if arg_count != callee.method.function.arity:
+                    print(f"RuntimeError: Method '{callee.method.function.name}' expected {callee.method.function.arity} arguments but got {arg_count}.")
+                    return False
+                self.stack[-1 - arg_count] = callee.receiver
+                frame = CallFrame(callee.method.function, callee.method, 0, len(self.stack) - arg_count - 1)
+                self.frames.append(frame)
+                return True
+            elif isinstance(callee.method, OrionNativeFunction):
+                 # It's a native method bound to a list
+                if callee.method.arity is not None and arg_count != callee.method.arity:
+                    print(f"RuntimeError: Expected {callee.method.arity} arguments but got {arg_count}.")
+                    return False
+
+                # The receiver (the list) is already on the stack before the args
+                # No, the receiver is in the bound method object. The stack has [bound_method, arg1, ...]
+                # The native function needs the list as its first argument.
+                args = [callee.receiver] + self.stack[-arg_count:] if arg_count > 0 else [callee.receiver]
+                self.stack = self.stack[:-arg_count-1] # Pop bound method and args
+                result = callee.method.func(*args)
+                self.push(result)
+                return True
         else:
             print(f"RuntimeError: Can only call functions and components, not {type(callee).__name__}.")
             return False
@@ -661,3 +714,26 @@ class VM:
                 self.open_upvalues.remove(upvalue)
             else:
                 break
+
+    def _native_list_forEach(self, l, callback):
+        if not isinstance(l, OrionList) or not isinstance(callback, OrionClosure):
+            return None
+
+        for item in l.elements:
+            self.call_orion_function(callback, [item])
+
+        return None
+
+    def _native_list_map(self, l, callback):
+        if not isinstance(l, OrionList) or not isinstance(callback, OrionClosure):
+            return None
+
+        new_elements = []
+        for item in l.elements:
+            result, success = self.call_orion_function(callback, [item])
+            if not success:
+                # Propagate the runtime error
+                return None
+            new_elements.append(result)
+
+        return OrionList(new_elements)

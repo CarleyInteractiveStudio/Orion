@@ -122,7 +122,7 @@ class OrionClassInstance(OrionInstance):
 
 class OrionBoundMethod(OrionObject):
     """A method bound to a specific receiver instance."""
-    def __init__(self, receiver: OrionInstance, method: OrionCompiledFunction):
+    def __init__(self, receiver: OrionInstance, method: OrionClosure):
         self.receiver = receiver
         self.method = method
 
