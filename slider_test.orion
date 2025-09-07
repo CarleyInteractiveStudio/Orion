@@ -1,0 +1,33 @@
+use ui;
+use slider;
+
+// Create a label to display the slider's value
+var value_label = Label({
+    x: 50,
+    y: 80,
+    text: "Value: 50"
+});
+
+// The callback function for the slider
+function onSliderChange(new_value) {
+    value_label.text = "Value: " + new_value;
+}
+
+// Create the slider
+var my_slider = Slider({
+    x: 50,
+    y: 50,
+    width: 300,
+    value: 50,
+    onChange: onSliderChange
+});
+
+// The main application component
+component App {
+    render() {
+        return [my_slider, value_label];
+    }
+}
+
+// Instantiate the App component
+var App = App();
