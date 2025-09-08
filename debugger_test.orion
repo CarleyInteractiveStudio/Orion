@@ -1,0 +1,10 @@
+var a = 10;
+var b = "hello";
+
+function my_func(c) {
+    var d = c + a;
+    debug;
+    print(d);
+}
+
+my_func(5);

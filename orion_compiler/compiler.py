@@ -283,6 +283,9 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
 
+    def visit_debug_stmt(self, stmt: ast.DebugStmt):
+        pass
+
     def visit_class_stmt(self, stmt: ast.Class):
         from .orion_types import ClassType, CLASS
         class_name = stmt.name.lexeme
@@ -614,6 +617,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys))
     def visit_for_stmt(self, stmt: ast.Stmt): pass
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
+
+    def visit_debug_stmt(self, stmt: ast.DebugStmt):
+        self._emit_byte(OpCode.OP_DEBUG)
 
     def visit_class_stmt(self, stmt: ast.Class):
         class_name = stmt.name.lexeme

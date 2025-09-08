@@ -73,6 +73,9 @@ class OpCode(IntEnum):
     # --- Modules ---
     OP_IMPORT_NATIVE = 39
 
+    # --- Debugging ---
+    OP_DEBUG = 40
+
     # --- End of Execution ---
     # OP_RETURN now serves this purpose
 

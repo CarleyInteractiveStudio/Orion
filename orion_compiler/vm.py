@@ -526,6 +526,27 @@ class VM:
             elif instruction == OpCode.OP_CLOSE_UPVALUE:
                 self._close_upvalues(len(self.stack) - 1)
                 self.pop()
+            elif instruction == OpCode.OP_DEBUG:
+                print("--- VM DEBUG ---")
+                print("  Stack:")
+                for i, value in enumerate(self.stack):
+                    print(f"    [{i}] {value}")
+
+                frame = self.frames[-1]
+                print(f"\n  Call Frame ({frame.function.name}):")
+                print(f"    - IP: {frame.ip}")
+                print(f"    - Slots Offset: {frame.slots_offset}")
+
+                print("\n  Locals in current frame (from stack):")
+                if self.frames:
+                    # Locals for the current frame are on the stack from its slot_offset
+                    for i in range(frame.slots_offset, len(self.stack)):
+                         print(f"    [{i}] {self.stack[i]}")
+
+                print("\n  Globals:")
+                for name, value in sorted(self.globals.items()):
+                    print(f"    - {name}: {value}")
+                print("--- END VM DEBUG ---")
             elif instruction == OpCode.OP_IMPORT_NATIVE:
                 module_name = read_constant()
                 if module_name not in self.native_modules:

@@ -73,6 +73,8 @@ class Parser:
 
     def _statement(self) -> ast.Stmt:
         """Parses a statement. This includes if, while, return, for, expression, and block statements."""
+        if self._match(TokenType.DEBUG):
+            return self._debug_statement()
         if self._match(TokenType.FOR):
             return self._for_statement()
         if self._match(TokenType.IF):
@@ -155,6 +157,12 @@ class Parser:
 
         self._consume(TokenType.SEMICOLON, "Expect ';' after return value.")
         return ast.Return(keyword, value)
+
+    def _debug_statement(self) -> ast.Stmt:
+        """Parses a debug statement."""
+        keyword = self._previous()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after 'debug'.")
+        return ast.DebugStmt(keyword)
 
     def _function(self, kind: str) -> ast.Function:
         """Parses a function declaration."""

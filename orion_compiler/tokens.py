@@ -43,6 +43,7 @@ class TokenType(Enum):
     CLASS = auto()
     COMPONENT = auto()
     CONST = auto()
+    DEBUG = auto()
     ELSE = auto()
     FALSE = auto()
     FLOAT = auto()
@@ -91,6 +92,7 @@ keywords = {
     "class": TokenType.CLASS,
     "component": TokenType.COMPONENT,
     "const": TokenType.CONST,
+    "debug": TokenType.DEBUG,
     "else": TokenType.ELSE,
     "false": TokenType.FALSE,
     "float": TokenType.FLOAT,
