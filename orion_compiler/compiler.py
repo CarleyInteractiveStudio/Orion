@@ -385,110 +385,115 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def _compile_stmt(self, stmt: ast.Stmt): stmt.accept(self)
     def _compile_expr(self, expr: ast.Expr): expr.accept(self)
     def _current_chunk(self) -> Chunk: return self.function.chunk
-    def _emit_byte(self, byte: int): self._current_chunk().write(byte, 0)
-    def _emit_bytes(self, byte1: int, byte2: int):
-        self._emit_byte(byte1); self._emit_byte(byte2)
+    def _emit_byte(self, byte: int, line: int):
+        self._current_chunk().write(byte, line)
+
+    def _emit_bytes(self, byte1: int, byte2: int, line: int):
+        self._emit_byte(byte1, line)
+        self._emit_byte(byte2, line)
     def _emit_return(self):
         if self.type == "initializer":
-            self._emit_bytes(OpCode.OP_GET_LOCAL, 0) # 'this' is in slot 0
+            self._emit_bytes(OpCode.OP_GET_LOCAL, 0, 0) # 'this' is in slot 0
         else:
-            self._emit_byte(OpCode.OP_NIL)
-        self._emit_byte(OpCode.OP_RETURN)
+            self._emit_byte(OpCode.OP_NIL, 0)
+        self._emit_byte(OpCode.OP_RETURN, 0)
 
     def _end_compiler(self) -> OrionCompiledFunction:
         self._emit_return()
         self.function.upvalue_count = len(self.upvalues)
         return self.function
     def _make_constant(self, value) -> int: return self._current_chunk().add_constant(value)
-    def _emit_constant(self, value):
+    def _emit_constant(self, value, line: int):
         constant_idx = self._make_constant(value)
         if constant_idx > 255: self.had_error = True; print("Too many constants in one chunk."); return
-        self._emit_bytes(OpCode.OP_CONSTANT, constant_idx)
+        self._emit_bytes(OpCode.OP_CONSTANT, constant_idx, line)
 
-    def _emit_opcode_and_constant_index(self, opcode, value):
+    def _emit_opcode_and_constant_index(self, opcode, value, line: int):
         constant_idx = self._make_constant(value)
         if constant_idx > 255:
             self.had_error = True
             print("Too many constants in one chunk.")
             return
-        self._emit_bytes(opcode, constant_idx)
+        self._emit_bytes(opcode, constant_idx, line)
 
     def visit_expression_stmt(self, stmt: ast.Expression):
-        self._compile_expr(stmt.expression); self._emit_byte(OpCode.OP_POP)
-    def visit_literal_expr(self, expr: ast.Literal): self._emit_constant(expr.value)
+        self._compile_expr(stmt.expression); self._emit_byte(OpCode.OP_POP, 0) # No token available
+    def visit_literal_expr(self, expr: ast.Literal): self._emit_constant(expr.value, 0) # No token available
     def visit_grouping_expr(self, expr: ast.Grouping): self._compile_expr(expr.expression)
     def visit_unary_expr(self, expr: ast.Unary):
         self._compile_expr(expr.right)
-        if expr.operator.token_type.name == 'MINUS': self._emit_byte(OpCode.OP_NEGATE)
-        elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT)
+        if expr.operator.token_type.name == 'MINUS': self._emit_byte(OpCode.OP_NEGATE, expr.operator.line)
+        elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT, expr.operator.line)
     def visit_binary_expr(self, expr: ast.Binary):
         self._compile_expr(expr.left); self._compile_expr(expr.right)
         op_type = expr.operator.token_type.name
         if op_type == 'BANG_EQUAL':
-            self._emit_byte(OpCode.OP_EQUAL)
-            self._emit_byte(OpCode.OP_NOT)
+            self._emit_byte(OpCode.OP_EQUAL, expr.operator.line)
+            self._emit_byte(OpCode.OP_NOT, expr.operator.line)
         else:
             op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
-            self._emit_byte(op_map[op_type])
+            self._emit_byte(op_map[op_type], expr.operator.line)
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
         if arg != -1:
-            self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
+            self._emit_bytes(OpCode.OP_GET_LOCAL, arg, expr.name.line)
         else:
             arg = self._resolve_upvalue(expr.name)
             if arg != -1:
-                self._emit_bytes(OpCode.OP_GET_UPVALUE, arg)
+                self._emit_bytes(OpCode.OP_GET_UPVALUE, arg, expr.name.line)
             else:
-                self._emit_opcode_and_constant_index(OpCode.OP_GET_GLOBAL, expr.name.lexeme)
+                self._emit_opcode_and_constant_index(OpCode.OP_GET_GLOBAL, expr.name.lexeme, expr.name.line)
     def visit_assign_expr(self, expr: ast.Assign):
         self._compile_expr(expr.value)
         arg = self._resolve_local(expr.name)
         if arg != -1:
-            self._emit_bytes(OpCode.OP_SET_LOCAL, arg)
+            self._emit_bytes(OpCode.OP_SET_LOCAL, arg, expr.name.line)
         else:
             arg = self._resolve_upvalue(expr.name)
             if arg != -1:
-                self._emit_bytes(OpCode.OP_SET_UPVALUE, arg)
+                self._emit_bytes(OpCode.OP_SET_UPVALUE, arg, expr.name.line)
             else:
-                self._emit_opcode_and_constant_index(OpCode.OP_SET_GLOBAL, expr.name.lexeme)
+                self._emit_opcode_and_constant_index(OpCode.OP_SET_GLOBAL, expr.name.lexeme, expr.name.line)
     def visit_var_stmt(self, stmt: ast.Var):
         self._compile_expr(stmt.initializer if stmt.initializer else ast.Literal(None))
         if self.scope_depth > 0: self._add_local(stmt.name, ANY); return
-        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme)
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme, stmt.name.line)
     def visit_block_stmt(self, stmt: ast.Block):
         self._begin_scope()
         for statement in stmt.statements: self._compile_stmt(statement)
         self._end_scope()
     def visit_if_stmt(self, stmt: ast.If):
         self._compile_expr(stmt.condition)
-        then_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE)
-        self._emit_byte(OpCode.OP_POP); self._compile_stmt(stmt.then_branch)
-        else_jump = self._emit_jump(OpCode.OP_JUMP)
-        self._patch_jump(then_jump); self._emit_byte(OpCode.OP_POP)
+        line = self._get_token_from_expr(stmt.condition).line
+        then_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, line)
+        self._emit_byte(OpCode.OP_POP, line); self._compile_stmt(stmt.then_branch)
+        else_jump = self._emit_jump(OpCode.OP_JUMP, line)
+        self._patch_jump(then_jump); self._emit_byte(OpCode.OP_POP, line)
         if stmt.else_branch: self._compile_stmt(stmt.else_branch)
         self._patch_jump(else_jump)
     def visit_while_stmt(self, stmt: ast.While):
         loop_start = len(self._current_chunk().code)
         self._compile_expr(stmt.condition)
-        exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE)
-        self._emit_byte(OpCode.OP_POP); self._compile_stmt(stmt.body)
-        self._emit_loop(loop_start); self._patch_jump(exit_jump); self._emit_byte(OpCode.OP_POP)
+        line = self._get_token_from_expr(stmt.condition).line
+        exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, line)
+        self._emit_byte(OpCode.OP_POP, line); self._compile_stmt(stmt.body)
+        self._emit_loop(loop_start, line); self._patch_jump(exit_jump); self._emit_byte(OpCode.OP_POP, line)
     def visit_function_stmt(self, stmt: ast.Function):
         compiler = Compiler(self, stmt, "function", self.type_analyzer, self.module_cache)
         function_obj = compiler._end_compiler()
 
-        self._emit_opcode_and_constant_index(OpCode.OP_CLOSURE, function_obj)
+        self._emit_opcode_and_constant_index(OpCode.OP_CLOSURE, function_obj, stmt.name.line)
 
         for upvalue in compiler.upvalues:
-            self._emit_byte(1 if upvalue.is_local else 0)
-            self._emit_byte(upvalue.index)
+            self._emit_byte(1 if upvalue.is_local else 0, stmt.name.line)
+            self._emit_byte(upvalue.index, stmt.name.line)
 
         if self.scope_depth > 0: self._add_local(stmt.name, FUNCTION)
-        else: self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme)
+        else: self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, stmt.name.lexeme, stmt.name.line)
     def visit_call_expr(self, expr: ast.Call):
         self._compile_expr(expr.callee)
         for arg in expr.arguments: self._compile_expr(arg)
-        self._emit_bytes(OpCode.OP_CALL, len(expr.arguments))
+        self._emit_bytes(OpCode.OP_CALL, len(expr.arguments), expr.paren.line)
     def visit_return_stmt(self, stmt: ast.Return):
         if self.type == "initializer":
             if stmt.value:
@@ -497,18 +502,18 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             self._emit_return() # Emits GET_LOCAL 0 and RETURN
         elif stmt.value:
             self._compile_expr(stmt.value)
-            self._emit_byte(OpCode.OP_RETURN)
+            self._emit_byte(OpCode.OP_RETURN, stmt.keyword.line)
         else:
             self._emit_return() # Emits NIL and RETURN
     def _begin_scope(self): self.scope_depth += 1
     def _end_scope(self):
         self.scope_depth -= 1
         while self.locals and self.locals[-1].depth > self.scope_depth:
-            if self.locals[-1].is_captured:
-                self._emit_byte(OpCode.OP_CLOSE_UPVALUE)
+            local = self.locals.pop()
+            if local.is_captured:
+                self._emit_byte(OpCode.OP_CLOSE_UPVALUE, local.name.line)
             else:
-                self._emit_byte(OpCode.OP_POP)
-            self.locals.pop()
+                self._emit_byte(OpCode.OP_POP, local.name.line)
     def _add_local(self, name: Token, type: Type): self.locals.append(Local(name, self.scope_depth, type))
     def _resolve_local(self, name: Token) -> int:
         for i in range(len(self.locals) - 1, -1, -1):
@@ -543,14 +548,16 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
 
         return -1
 
-    def _emit_jump(self, instruction: OpCode) -> int:
-        self._emit_byte(instruction); self._emit_byte(0xff); self._emit_byte(0xff)
+    def _emit_jump(self, instruction: OpCode, line: int) -> int:
+        self._emit_byte(instruction, line)
+        self._emit_byte(0xff, line)
+        self._emit_byte(0xff, line)
         return len(self._current_chunk().code) - 2
-    def _emit_loop(self, loop_start: int):
-        self._emit_byte(OpCode.OP_LOOP)
+    def _emit_loop(self, loop_start: int, line: int):
+        self._emit_byte(OpCode.OP_LOOP, line)
         offset = len(self._current_chunk().code) - loop_start + 2
         if offset > 0xffff: self.had_error = True; print("Loop body too large.")
-        self._emit_byte((offset >> 8) & 0xff); self._emit_byte(offset & 0xff)
+        self._emit_byte((offset >> 8) & 0xff, line); self._emit_byte(offset & 0xff, line)
     def _patch_jump(self, offset: int):
         jump = len(self._current_chunk().code) - offset - 2
         if jump > 0xffff: self.had_error = True; print("Too much code to jump over.")
@@ -559,15 +566,15 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_logical_expr(self, expr: ast.Logical): pass
     def visit_get_expr(self, expr: ast.Get):
         self._compile_expr(expr.object)
-        self._emit_opcode_and_constant_index(OpCode.OP_GET_PROPERTY, expr.name.lexeme)
+        self._emit_opcode_and_constant_index(OpCode.OP_GET_PROPERTY, expr.name.lexeme, expr.name.line)
     def visit_set_expr(self, expr: ast.Set):
         self._compile_expr(expr.object); self._compile_expr(expr.value)
-        self._emit_opcode_and_constant_index(OpCode.OP_SET_PROPERTY, expr.name.lexeme)
+        self._emit_opcode_and_constant_index(OpCode.OP_SET_PROPERTY, expr.name.lexeme, expr.name.line)
     def visit_this_expr(self, expr: ast.This):
         if self.type != 'method':
             print("Compile Error: Cannot use 'this' outside of a method."); self.had_error = True; return
         arg = self._resolve_local(expr.keyword)
-        self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
+        self._emit_bytes(OpCode.OP_GET_LOCAL, arg, expr.keyword.line)
 
     def visit_super_expr(self, expr: ast.Super):
         if self.type != 'method':
@@ -580,12 +587,12 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         this_token = Token(TokenType.THIS, 'this', None, expr.keyword.line)
         arg = self._resolve_local(this_token)
 
-        self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
-        self._emit_opcode_and_constant_index(OpCode.OP_GET_SUPER, expr.method.lexeme)
+        self._emit_bytes(OpCode.OP_GET_LOCAL, arg, expr.keyword.line)
+        self._emit_opcode_and_constant_index(OpCode.OP_GET_SUPER, expr.method.lexeme, expr.method.line)
 
     def visit_component_stmt(self, stmt: ast.ComponentStmt):
         component_name = stmt.name.lexeme
-        self._emit_bytes(OpCode.OP_DEFINE_GLOBAL, self._make_constant(component_name))
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, component_name, stmt.name.line)
         properties = [prop for prop in stmt.body if isinstance(prop, ast.StyleProp)]
         component_def = OrionComponentDef(component_name, properties)
         for member in stmt.body:
@@ -593,8 +600,8 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
                 compiler = Compiler(self, member, "method", self.type_analyzer, self.module_cache)
                 function_obj = compiler._end_compiler()
                 component_def.methods[member.name.lexeme] = function_obj
-        self._emit_constant(component_def)
-        self._emit_bytes(OpCode.OP_SET_GLOBAL, self._make_constant(component_name))
+        self._emit_constant(component_def, stmt.name.line)
+        self._emit_opcode_and_constant_index(OpCode.OP_SET_GLOBAL, component_name, stmt.name.line)
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
@@ -604,30 +611,30 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         pass
     def visit_list_literal_expr(self, expr: ast.ListLiteral):
         for element in expr.elements: self._compile_expr(element)
-        self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements))
+        self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements), 0) # No token available
     def visit_get_subscript_expr(self, expr: ast.GetSubscript):
         self._compile_expr(expr.object); self._compile_expr(expr.index)
-        self._emit_byte(OpCode.OP_GET_SUBSCRIPT)
+        self._emit_byte(OpCode.OP_GET_SUBSCRIPT, expr.bracket.line)
     def visit_set_subscript_expr(self, expr: ast.SetSubscript):
         self._compile_expr(expr.object); self._compile_expr(expr.index); self._compile_expr(expr.value)
-        self._emit_byte(OpCode.OP_SET_SUBSCRIPT)
+        self._emit_byte(OpCode.OP_SET_SUBSCRIPT, expr.bracket.line)
     def visit_dict_literal_expr(self, expr: ast.DictLiteral):
         for i in range(len(expr.keys)):
             self._compile_expr(expr.keys[i]); self._compile_expr(expr.values[i])
-        self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys))
+        self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys), 0) # No token available
     def visit_for_stmt(self, stmt: ast.Stmt): pass
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
 
     def visit_debug_stmt(self, stmt: ast.DebugStmt):
-        self._emit_byte(OpCode.OP_DEBUG)
+        self._emit_byte(OpCode.OP_DEBUG, stmt.keyword.line)
 
     def visit_class_stmt(self, stmt: ast.Class):
         class_name = stmt.name.lexeme
-        self._emit_opcode_and_constant_index(OpCode.OP_CLASS, class_name)
+        self._emit_opcode_and_constant_index(OpCode.OP_CLASS, class_name, stmt.name.line)
 
         if stmt.superclass:
             self._compile_expr(stmt.superclass)
-            self._emit_byte(OpCode.OP_INHERIT)
+            self._emit_byte(OpCode.OP_INHERIT, stmt.superclass.name.line)
 
         # Compile methods
         for method_node in stmt.methods:
@@ -635,9 +642,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             function_obj = compiler._end_compiler()
 
             # Add the compiled function to the constant pool
-            self._emit_constant(function_obj)
+            self._emit_constant(function_obj, method_node.name.line)
 
             # Add the method name to the constant pool
-            self._emit_opcode_and_constant_index(OpCode.OP_METHOD, method_node.name.lexeme)
+            self._emit_opcode_and_constant_index(OpCode.OP_METHOD, method_node.name.lexeme, method_node.name.line)
 
-        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, class_name)
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, class_name, stmt.name.line)

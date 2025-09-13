@@ -1,0 +1,2 @@
+var my_list = [1, 2, 3];
+print(my_list[5]); // Esto debería fallar en tiempo de ejecución

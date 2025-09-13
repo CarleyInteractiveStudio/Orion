@@ -318,6 +318,10 @@ class VM:
         result, last_value = self._run(stop_at_frame_count=initial_frame_count - 1)
         return last_value
 
+    def _runtime_error(self, message: str):
+        line = self.frames[-1].function.chunk.lines[self.frames[-1].ip - 1]
+        print(f"[line {line}] RuntimeError: {message}")
+
     def _run(self, stop_at_frame_count: int = 0) -> (InterpretResult, Any):
         frame = self.frames[-1]
         def read_byte():
@@ -356,7 +360,7 @@ class VM:
                 elif isinstance(a, str) and isinstance(b, str):
                     self.push(a + b)
                 else:
-                    print("RuntimeError: Operands for '+' must be two numbers or two strings.")
+                    self._runtime_error("Operands for '+' must be two numbers or two strings.")
                     return InterpretResult.RUNTIME_ERROR, None
             elif instruction == OpCode.OP_SUBTRACT: self._binary_op(lambda a, b: a - b)
             elif instruction == OpCode.OP_MULTIPLY: self._binary_op(lambda a, b: a * b)
@@ -376,13 +380,13 @@ class VM:
             elif instruction == OpCode.OP_GET_GLOBAL:
                 name = read_constant()
                 if name not in self.globals:
-                    print(f"RuntimeError: Undefined variable '{name}'.")
+                    self._runtime_error(f"Undefined variable '{name}'.")
                     return InterpretResult.RUNTIME_ERROR, None
                 self.push(self.globals[name])
             elif instruction == OpCode.OP_SET_GLOBAL:
                 name = read_constant()
                 if name not in self.globals:
-                    print(f"RuntimeError: Undefined variable '{name}'.")
+                    self._runtime_error(f"Undefined variable '{name}'.")
                     return InterpretResult.RUNTIME_ERROR, None
                 self.globals[name] = self.peek(0)
             elif instruction == OpCode.OP_GET_LOCAL:
@@ -416,7 +420,7 @@ class VM:
                         self.push(bound_method)
                         continue
 
-                    print(f"RuntimeError: Undefined property '{name}' on '{instance.klass.name}'.")
+                    self._runtime_error(f"Undefined property '{name}' on '{instance.klass.name}'.")
                     return InterpretResult.RUNTIME_ERROR, None
                 if isinstance(instance, OrionComponentInstance):
                     if name in instance.fields:
@@ -429,7 +433,7 @@ class VM:
                         self.pop()
                         self.push(bound_method)
                         continue
-                    print(f"RuntimeError: Undefined property '{name}' on component '{instance.definition.name}'.")
+                    self._runtime_error(f"Undefined property '{name}' on component '{instance.definition.name}'.")
                     return InterpretResult.RUNTIME_ERROR, None
                 if isinstance(instance, OrionList):
                     if name == "length":
@@ -443,10 +447,10 @@ class VM:
                         self.push(bound_method)
                         continue
                     else:
-                        print(f"RuntimeError: Type 'list' has no property '{name}'.")
+                        self._runtime_error(f"Type 'list' has no property '{name}'.")
                         return InterpretResult.RUNTIME_ERROR, None
                 if not isinstance(instance, OrionInstance):
-                    print("RuntimeError: Only instances and lists have properties.")
+                    self._runtime_error("Only instances and lists have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
                 value = instance.get(Token(None, name, None, 0))
                 self.pop()
@@ -454,10 +458,10 @@ class VM:
             elif instruction == OpCode.OP_SET_PROPERTY:
                 instance = self.peek(1)
                 if isinstance(instance, OrionList):
-                    print("RuntimeError: Cannot set properties on a list.")
+                    self._runtime_error("Cannot set properties on a list.")
                     return InterpretResult.RUNTIME_ERROR, None
                 if not isinstance(instance, OrionInstance):
-                    print("RuntimeError: Only instances have properties.")
+                    self._runtime_error("Only instances have properties.")
                     return InterpretResult.RUNTIME_ERROR, None
                 name = read_constant()
                 value = self.peek(0)
@@ -479,7 +483,7 @@ class VM:
                 superclass = self.peek(0)
                 subclass = self.peek(1)
                 if not isinstance(superclass, OrionClass):
-                    print("RuntimeError: Superclass must be a class.")
+                    self._runtime_error("Superclass must be a class.")
                     return InterpretResult.RUNTIME_ERROR, None
 
                 subclass.superclass = superclass
@@ -495,11 +499,11 @@ class VM:
                 superclass = instance.klass.superclass
 
                 if superclass is None:
-                    print(f"RuntimeError: 'super' used in a class with no superclass.")
+                    self._runtime_error("'super' used in a class with no superclass.")
                     return InterpretResult.RUNTIME_ERROR, None
 
                 if method_name not in superclass.methods:
-                    print(f"RuntimeError: Undefined property '{method_name}' on superclass '{superclass.name}'.")
+                    self._runtime_error(f"Undefined property '{method_name}' on superclass '{superclass.name}'.")
                     return InterpretResult.RUNTIME_ERROR, None
 
                 method = superclass.methods[method_name]
@@ -559,7 +563,7 @@ class VM:
             elif instruction == OpCode.OP_IMPORT_NATIVE:
                 module_name = read_constant()
                 if module_name not in self.native_modules:
-                    print(f"RuntimeError: Native module '{module_name}' not found.")
+                    self._runtime_error(f"Native module '{module_name}' not found.")
                     return InterpretResult.RUNTIME_ERROR, None
 
                 native_module = self.native_modules[module_name]
@@ -578,19 +582,19 @@ class VM:
                 collection = self.pop()
                 if isinstance(collection, OrionList):
                     if not isinstance(index, int):
-                        print(f"RuntimeError: List index must be an integer, not {type(index).__name__}.")
+                        self._runtime_error(f"List index must be an integer, not {type(index).__name__}.")
                         return InterpretResult.RUNTIME_ERROR, None
                     try: self.push(collection.elements[index])
                     except IndexError:
-                        print(f"RuntimeError: List index {index} out of range.")
+                        self._runtime_error(f"List index {index} out of range.")
                         return InterpretResult.RUNTIME_ERROR, None
                 elif isinstance(collection, OrionDict):
                     if not isinstance(index, (str, int, bool, type(None))):
-                         print(f"RuntimeError: Dictionary key must be a valid hashable type.")
+                         self._runtime_error(f"Dictionary key must be a valid hashable type.")
                          return InterpretResult.RUNTIME_ERROR, None
                     self.push(collection.pairs.get(index))
                 else:
-                    print("RuntimeError: Object is not subscriptable.")
+                    self._runtime_error("Object is not subscriptable.")
                     return InterpretResult.RUNTIME_ERROR, None
             elif instruction == OpCode.OP_SET_SUBSCRIPT:
                 value = self.pop()
@@ -598,22 +602,22 @@ class VM:
                 collection = self.pop()
                 if isinstance(collection, OrionList):
                     if not isinstance(index, int):
-                        print(f"RuntimeError: List index must be an integer.")
+                        self._runtime_error(f"List index must be an integer.")
                         return InterpretResult.RUNTIME_ERROR, None
                     try:
                         collection.elements[index] = value
                         self.push(value)
                     except IndexError:
-                        print(f"RuntimeError: List index {index} out of range.")
+                        self._runtime_error(f"List index {index} out of range.")
                         return InterpretResult.RUNTIME_ERROR, None
                 elif isinstance(collection, OrionDict):
                     if not isinstance(index, (str, int, bool, type(None))):
-                         print(f"RuntimeError: Dictionary key must be a valid hashable type.")
+                         self._runtime_error(f"Dictionary key must be a valid hashable type.")
                          return InterpretResult.RUNTIME_ERROR, None
                     collection.pairs[index] = value
                     self.push(value)
                 else:
-                    print("RuntimeError: Object is not subscriptable.")
+                    self._runtime_error("Object is not subscriptable.")
                     return InterpretResult.RUNTIME_ERROR, None
             elif instruction == OpCode.OP_BUILD_DICT:
                 pair_count = read_byte()
@@ -628,7 +632,7 @@ class VM:
     def _call_value(self, callee: Any, arg_count: int) -> bool:
         if isinstance(callee, OrionNativeFunction):
             if callee.arity is not None and arg_count != callee.arity:
-                print(f"RuntimeError: Expected {callee.arity} arguments but got {arg_count}.")
+                self._runtime_error(f"Expected {callee.arity} arguments but got {arg_count}.")
                 return False
             args = self.stack[-arg_count:] if arg_count > 0 else []
             self.stack = self.stack[:-arg_count-1]
@@ -637,7 +641,7 @@ class VM:
             return True
         elif isinstance(callee, OrionClosure):
             if arg_count != callee.function.arity:
-                print(f"RuntimeError: Expected {callee.function.arity} arguments but got {arg_count}.")
+                self._runtime_error(f"Expected {callee.function.arity} arguments but got {arg_count}.")
                 return False
             frame = CallFrame(callee.function, callee, 0, len(self.stack) - arg_count - 1)
             self.frames.append(frame)
@@ -651,26 +655,26 @@ class VM:
             if "init" in callee.methods:
                 initializer = callee.methods["init"]
                 if arg_count != initializer.function.arity:
-                    print(f"RuntimeError: Expected {initializer.function.arity} arguments for init but got {arg_count}.")
+                    self._runtime_error(f"Expected {initializer.function.arity} arguments for init but got {arg_count}.")
                     return False
                 # Call the initializer.
                 frame = CallFrame(initializer.function, initializer, 0, len(self.stack) - arg_count - 1)
                 self.frames.append(frame)
             elif arg_count != 0:
                 # No initializer, so no arguments are allowed.
-                print(f"RuntimeError: Expected 0 arguments but got {arg_count}.")
+                self._runtime_error(f"Expected 0 arguments but got {arg_count}.")
                 return False
 
             return True
         elif isinstance(callee, OrionComponentDef):
             if arg_count > 1:
-                print(f"RuntimeError: Component '{callee.name}' constructor takes 0 or 1 arguments, but got {arg_count}.")
+                self._runtime_error(f"Component '{callee.name}' constructor takes 0 or 1 arguments, but got {arg_count}.")
                 return False
             props = {}
             if arg_count == 1:
                 props_arg = self.peek(0)
                 if not isinstance(props_arg, OrionDict):
-                    print(f"RuntimeError: Component constructor argument must be a dictionary.")
+                    self._runtime_error("Component constructor argument must be a dictionary.")
                     return False
                 props = props_arg.pairs
                 self.pop()
@@ -692,7 +696,7 @@ class VM:
             # The method is a closure for class methods, but a native function for list methods.
             if isinstance(callee.method, OrionClosure):
                 if arg_count != callee.method.function.arity:
-                    print(f"RuntimeError: Method '{callee.method.function.name}' expected {callee.method.function.arity} arguments but got {arg_count}.")
+                    self._runtime_error(f"Method '{callee.method.function.name}' expected {callee.method.function.arity} arguments but got {arg_count}.")
                     return False
                 self.stack[-1 - arg_count] = callee.receiver
                 frame = CallFrame(callee.method.function, callee.method, 0, len(self.stack) - arg_count - 1)
@@ -701,7 +705,7 @@ class VM:
             elif isinstance(callee.method, OrionNativeFunction):
                  # It's a native method bound to a list
                 if callee.method.arity is not None and arg_count != callee.method.arity:
-                    print(f"RuntimeError: Expected {callee.method.arity} arguments but got {arg_count}.")
+                    self._runtime_error(f"Expected {callee.method.arity} arguments but got {arg_count}.")
                     return False
 
                 # The receiver (the list) is already on the stack before the args
@@ -713,7 +717,7 @@ class VM:
                 self.push(result)
                 return True
         else:
-            print(f"RuntimeError: Can only call functions and components, not {type(callee).__name__}.")
+            self._runtime_error(f"Can only call functions and components, not {type(callee).__name__}.")
             return False
 
     def _is_falsey(self, value) -> bool:
