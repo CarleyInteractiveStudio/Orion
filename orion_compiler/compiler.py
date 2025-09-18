@@ -1,13 +1,13 @@
 import os
 from dataclasses import dataclass
-import ast_nodes as ast
-from bytecode import Chunk, OpCode
-from tokens import Token, TokenType
-from objects import OrionCompiledFunction, OrionComponentDef
-from orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
-from errors import type_error
-from lexer import Lexer
-from parser import Parser
+from . import ast_nodes as ast
+from .bytecode import Chunk, OpCode
+from .tokens import Token, TokenType
+from .objects import OrionCompiledFunction, OrionComponentDef
+from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
+from .errors import type_error
+from .lexer import Lexer
+from .parser import Parser
 
 # --- Module Resolution ---
 def _find_module(module_name: str) -> str | None:
@@ -24,7 +24,7 @@ def _find_module(module_name: str) -> str | None:
 def compile(source: str) -> OrionCompiledFunction | None:
     # This is a bit of a hack to get native module definitions to the analyzer.
     # In a larger system, this would come from a shared configuration.
-    from vm import VM
+    from .vm import VM
     temp_vm = VM()
     native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
 
@@ -79,7 +79,7 @@ class Local:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE }
+        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "len": FUNCTION, "lexer": MODULE }
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
@@ -200,12 +200,37 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_return_stmt(self, stmt: ast.Return):
         if stmt.value: self._analyze_expr(stmt.value)
     def visit_call_expr(self, expr: ast.Call) -> Type:
-        from orion_types import ComponentType, TYPE
+        from .orion_types import ComponentType, TYPE, ListType
         callee_type = self._analyze_expr(expr.callee)
+
+        # Handle built-in functions with special type rules
+        if isinstance(expr.callee, ast.Variable):
+            callee_name = expr.callee.name.lexeme
+            if callee_name == "len":
+                if len(expr.arguments) != 1:
+                    type_error(expr.paren, f"Expected 1 argument but got {len(expr.arguments)}.")
+                    self.had_error = True
+
+                if len(expr.arguments) == 1:
+                    arg_type = self._analyze_expr(expr.arguments[0])
+                    # Check if argument is a list or a string
+                    if not (isinstance(arg_type, ListType) or arg_type == STRING or arg_type == ANY):
+                        type_error(expr.paren, f"Argument to 'len' must be a string or a list, not {arg_type}.")
+                        self.had_error = True
+                return NUMBER
+
         if callee_type == TYPE and isinstance(expr.callee, ast.Variable):
             component_name = expr.callee.name.lexeme
-            if component_name in self.type_map and isinstance(self.type_map[component_name], ComponentType): return self.type_map[component_name]
-        if callee_type == FUNCTION: return ANY
+            if component_name in self.type_map and isinstance(self.type_map[component_name], ComponentType):
+                return self.type_map[component_name]
+
+        if callee_type == FUNCTION:
+            return ANY # For user-defined functions, we don't know the return type yet.
+
+        if callee_type != ANY:
+             type_error(expr.paren, f"Can only call functions and classes, not type '{callee_type}'.")
+             self.had_error = True
+
         return ANY
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
     def visit_get_expr(self, expr: ast.Get) -> Type:

@@ -38,6 +38,16 @@ class VM:
         self._define_native("clock", 0, lambda: time.time())
         self._define_native("print", None, native_print)
         self._define_native("slice", None, native_slice)
+
+        def native_len(obj):
+            if isinstance(obj, str):
+                return len(obj)
+            if isinstance(obj, OrionList):
+                return len(obj.elements)
+            print("RuntimeError: Object has no length.")
+            return None
+        self._define_native("len", 1, native_len)
+
         self._init_lexer_global()
 
         self.native_modules: dict = {}
@@ -418,8 +428,11 @@ class VM:
                 self.push(module_instance)
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
-                elements = self.stack[-item_count:]
-                self.stack = self.stack[:-item_count]
+                if item_count == 0:
+                    elements = []
+                else:
+                    elements = self.stack[-item_count:]
+                    self.stack = self.stack[:-item_count]
                 list_obj = OrionList(elements)
                 self.push(list_obj)
             elif instruction == OpCode.OP_GET_SUBSCRIPT:
