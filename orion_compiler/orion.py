@@ -29,16 +29,7 @@ class Orion:
         Runs a piece of Orion source code. If a renderable 'App' component
         is found, it opens a window and begins the event loop.
         """
-        lexer = Lexer(source)
-        tokens = lexer.scan_tokens()
-
-        parser = Parser(tokens)
-        statements = parser.parse()
-
-        if not statements and len(tokens) > 1:
-            return
-
-        main_function = compile_source(statements)
+        main_function = compile_source(source)
 
         if main_function is None:
             self.had_error = True

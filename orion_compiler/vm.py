@@ -42,6 +42,7 @@ class VM:
 
         self.native_modules: dict = {}
         self.draw_commands: list = []
+        self.debug_mode: str | None = None
         self._init_io_module()
         self._init_str_module()
         self._init_math_module()
@@ -299,7 +300,9 @@ class VM:
             elif instruction == OpCode.OP_DIVIDE: self._binary_op(lambda a, b: a / b)
             elif instruction == OpCode.OP_EQUAL: self._binary_op(lambda a, b: a == b)
             elif instruction == OpCode.OP_GREATER: self._binary_op(lambda a, b: a > b)
+            elif instruction == OpCode.OP_GREATER_EQUAL: self._binary_op(lambda a, b: a >= b)
             elif instruction == OpCode.OP_LESS: self._binary_op(lambda a, b: a < b)
+            elif instruction == OpCode.OP_LESS_EQUAL: self._binary_op(lambda a, b: a <= b)
             elif instruction == OpCode.OP_NOT: self.push(not self._is_falsey(self.pop()))
             elif instruction == OpCode.OP_TRUE: self.push(True)
             elif instruction == OpCode.OP_FALSE: self.push(False)
@@ -473,6 +476,82 @@ class VM:
                     pairs[key] = value
                 dict_obj = OrionDict(pairs)
                 self.push(dict_obj)
+            elif instruction == OpCode.OP_DEBUG:
+                self._debugger_prompt()
+
+            if self.debug_mode == 'step':
+                self.debug_mode = None
+                self._debugger_prompt()
+
+    def _debugger_prompt(self):
+        """Enters the interactive debugger prompt."""
+        frame = self.frames[-1]
+        # The -1 is because the IP has already been advanced past the DEBUG opcode.
+        line = frame.function.chunk.lines[frame.ip - 1]
+        print(f"--- Debugger paused at {frame.function.name}:{line} ---")
+        print("Commands: [c]ontinue, [s]tep, [p]rint <var>, [st]ack")
+
+        while True:
+            try:
+                command_line = input("(debug)> ").strip()
+                if not command_line:
+                    continue
+
+                parts = command_line.split(' ', 1)
+                command = parts[0]
+                arg = parts[1] if len(parts) > 1 else None
+
+                if command in ("c", "continue"):
+                    break
+                elif command in ("s", "step"):
+                    self.debug_mode = 'step'
+                    break
+                elif command in ("st", "stack"):
+                    self._debug_print_stack()
+                elif command in ("p", "print"):
+                    if arg:
+                        self._debug_print_variable(arg)
+                    else:
+                        print("Error: 'print' requires a variable name.")
+                else:
+                    print(f"Unknown command: '{command}'")
+
+            except (KeyboardInterrupt, EOFError):
+                print("\nResuming execution...")
+                break
+
+    def _debug_print_stack(self):
+        print("--- Call Stack ---")
+        for frame in reversed(self.frames):
+            # ip points to the *next* instruction, so -1 gives the last executed one.
+            line = frame.function.chunk.lines[frame.ip - 1]
+            print(f"  [line {line}] in {frame.function.name}")
+
+    def _debug_print_variable(self, name: str):
+        frame = self.frames[-1]
+
+        # Look in locals
+        for i, local in enumerate(frame.function.locals_info):
+            # The 'locals_info' list from the compiler includes the function itself
+            # and parameters. The name can be empty for the script-level function.
+            if local.name and local.name.lexeme == name:
+                value = self.stack[frame.slots_offset + i]
+                print(f"(local) {name} = {self._value_to_string(value)}")
+                return
+
+        # Look in globals
+        if name in self.globals:
+            value = self.globals[name]
+            print(f"(global) {name} = {self._value_to_string(value)}")
+            return
+
+        print(f"Error: Variable '{name}' not defined in the current scope.")
+
+    def _value_to_string(self, value: Any) -> str:
+        if value is None: return "nil"
+        if isinstance(value, bool): return "true" if value else "false"
+        # Use the object's __str__ for Orion-specific formatting if available
+        return str(value)
 
     def _call_value(self, callee: Any, arg_count: int) -> bool:
         if isinstance(callee, OrionNativeFunction):

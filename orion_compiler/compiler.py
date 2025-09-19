@@ -108,16 +108,16 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_binary_expr(self, expr: ast.Binary) -> Type:
         left_type, right_type = self._analyze_expr(expr.left), self._analyze_expr(expr.right)
         op = expr.operator.token_type.name
-        if op in ('MINUS', 'STAR', 'SLASH', 'GREATER', 'LESS'):
+        if op in ('MINUS', 'STAR', 'SLASH', 'GREATER', 'LESS', 'GREATER_EQUAL', 'LESS_EQUAL'):
             if left_type != ANY and right_type != ANY and (left_type != NUMBER or right_type != NUMBER):
                 type_error(expr.operator, f"Operands for {op} must be numbers."); self.had_error = True
-            return BOOL if op in ('GREATER', 'LESS') else NUMBER
+            return BOOL if op in ('GREATER', 'LESS', 'GREATER_EQUAL', 'LESS_EQUAL') else NUMBER
         if op == 'PLUS':
             if (left_type == NUMBER and right_type == NUMBER): return NUMBER
             if (left_type == STRING and right_type == STRING): return STRING
             if left_type == ANY or right_type == ANY: return ANY
             type_error(expr.operator, "Operands for '+' must be two numbers or two strings."); self.had_error = True; return ANY
-        if op == 'EQUAL_EQUAL': return BOOL
+        if op in ('EQUAL_EQUAL', 'BANG_EQUAL'): return BOOL
         return ANY
     def visit_unary_expr(self, expr: ast.Unary) -> Type:
         right_type = self._analyze_expr(expr.right)
@@ -272,6 +272,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_style_prop_stmt(self, stmt: ast.StyleProp): pass
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
+    def visit_debug_stmt(self, stmt: ast.Debug): pass
 
     def visit_class_stmt(self, stmt: ast.Class):
         from orion_types import ClassType, CLASS
@@ -355,6 +356,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             self.type = "initializer"
 
         self.locals: list[Local] = []
+        self.all_locals_for_debug: list[Local] = []
         self.scope_depth: int = 0
         self.had_error = False
         func_name = function_stmt.name.lexeme if function_stmt.name else "<script>"
@@ -365,7 +367,12 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             self._add_local(Token(None, "", None, 0), FUNCTION)
         for param in function_stmt.params:
             self._add_local(param.name, ANY)
+
+        # The body of a function gets its own scope.
+        self._begin_scope()
         self._compile_program(function_stmt.body)
+        self._end_scope()
+
     def _compile_program(self, statements: list[ast.Stmt]):
         for stmt in statements: self._compile_stmt(stmt)
     def _compile_stmt(self, stmt: ast.Stmt): stmt.accept(self)
@@ -382,7 +389,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_byte(OpCode.OP_RETURN)
 
     def _end_compiler(self) -> OrionCompiledFunction:
-        self._emit_return(); return self.function
+        self._emit_return()
+        self.function.locals_info = self.all_locals_for_debug
+        return self.function
     def _make_constant(self, value) -> int: return self._current_chunk().add_constant(value)
     def _emit_constant(self, value):
         constant_idx = self._make_constant(value)
@@ -390,6 +399,10 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_bytes(OpCode.OP_CONSTANT, constant_idx)
     def visit_expression_stmt(self, stmt: ast.Expression):
         self._compile_expr(stmt.expression); self._emit_byte(OpCode.OP_POP)
+
+    def visit_debug_stmt(self, stmt: ast.Debug):
+        self._current_chunk().write(OpCode.OP_DEBUG, stmt.keyword.line)
+
     def visit_literal_expr(self, expr: ast.Literal): self._emit_constant(expr.value)
     def visit_grouping_expr(self, expr: ast.Grouping): self._compile_expr(expr.expression)
     def visit_unary_expr(self, expr: ast.Unary):
@@ -397,9 +410,19 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         if expr.operator.token_type.name == 'MINUS': self._emit_byte(OpCode.OP_NEGATE)
         elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT)
     def visit_binary_expr(self, expr: ast.Binary):
-        self._compile_expr(expr.left); self._compile_expr(expr.right)
-        op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
-        self._emit_byte(op_map[expr.operator.token_type.name])
+        self._compile_expr(expr.left)
+        self._compile_expr(expr.right)
+        op_name = expr.operator.token_type.name
+        if op_name == 'BANG_EQUAL':
+            self._emit_byte(OpCode.OP_EQUAL)
+            self._emit_byte(OpCode.OP_NOT)
+            return
+        op_map = {
+            'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY,
+            'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER,
+            'GREATER_EQUAL': OpCode.OP_GREATER_EQUAL, 'LESS': OpCode.OP_LESS, 'LESS_EQUAL': OpCode.OP_LESS_EQUAL,
+        }
+        self._emit_byte(op_map[op_name])
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
         if arg != -1: self._emit_bytes(OpCode.OP_GET_LOCAL, arg)
@@ -457,7 +480,10 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self.scope_depth -= 1
         while self.locals and self.locals[-1].depth > self.scope_depth:
             self._emit_byte(OpCode.OP_POP); self.locals.pop()
-    def _add_local(self, name: Token, type: Type): self.locals.append(Local(name, self.scope_depth, type))
+    def _add_local(self, name: Token, type: Type):
+        local = Local(name, self.scope_depth, type)
+        self.locals.append(local)
+        self.all_locals_for_debug.append(local)
     def _resolve_local(self, name: Token) -> int:
         for i in range(len(self.locals) - 1, -1, -1):
             if name.lexeme == self.locals[i].name.lexeme: return i

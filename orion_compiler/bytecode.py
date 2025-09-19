@@ -31,6 +31,8 @@ class OpCode(IntEnum):
     OP_EQUAL = 11
     OP_GREATER = 12
     OP_LESS = 13
+    OP_GREATER_EQUAL = 35 # Re-using numbers is fine for now
+    OP_LESS_EQUAL = 36
 
     # --- Variables ---
     OP_DEFINE_GLOBAL = 14
@@ -64,6 +66,9 @@ class OpCode(IntEnum):
 
     # --- Modules ---
     OP_IMPORT_NATIVE = 33
+
+    # --- Debugging ---
+    OP_DEBUG = 34
 
     # --- End of Execution ---
     # OP_RETURN now serves this purpose
