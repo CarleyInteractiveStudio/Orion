@@ -40,7 +40,6 @@ class OrionCompiledFunction(OrionObject):
         self.arity = arity
         self.chunk = chunk
         self.name = name
-        self.locals_info: List[Any] = []
 
     def __str__(self) -> str:
         return f"<fn {self.name}>"

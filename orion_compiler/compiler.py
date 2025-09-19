@@ -34,6 +34,8 @@ def compile(source: str) -> OrionCompiledFunction | None:
         main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
         return main_function
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"FATAL: An unexpected error occurred during compilation: {e}")
         return None
 

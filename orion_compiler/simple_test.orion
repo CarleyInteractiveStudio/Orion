@@ -1,0 +1,8 @@
+var g = "global";
+
+function test() {
+  var l = "local";
+  debug;
+}
+
+test();

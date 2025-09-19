@@ -1,3 +1,4 @@
+from disassembler import disassemble_instruction
 from bytecode import Chunk, OpCode
 from objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
 from tokens import Token, TokenType
@@ -26,6 +27,8 @@ class VM:
         self.frames: list[CallFrame] = []
         self.stack: list = []
         self.globals: dict = {}
+        self.debug_mode: str | None = None
+        self.step_target_line: int = -1
 
         def native_print(*args):
             print(*[str(arg) for arg in args])
@@ -42,7 +45,6 @@ class VM:
 
         self.native_modules: dict = {}
         self.draw_commands: list = []
-        self.debug_mode: str | None = None
         self._init_io_module()
         self._init_str_module()
         self._init_math_module()
@@ -479,7 +481,13 @@ class VM:
             elif instruction == OpCode.OP_DEBUG:
                 self._debugger_prompt()
 
-            if self.debug_mode == 'step':
+            if self.debug_mode == 'step_line':
+                # Re-enter debugger if we have advanced to a new line
+                current_line = frame.function.chunk.lines[frame.ip - 1]
+                if current_line != self.step_target_line:
+                    self.debug_mode = None # Stop stepping
+                    self._debugger_prompt() # Re-enter debugger
+            elif self.debug_mode == 'step_instruction':
                 self.debug_mode = None
                 self._debugger_prompt()
 
@@ -504,7 +512,7 @@ class VM:
                 if command in ("c", "continue"):
                     break
                 elif command in ("s", "step"):
-                    self.debug_mode = 'step'
+                    self.debug_mode = 'step_instruction'
                     break
                 elif command in ("st", "stack"):
                     self._debug_print_stack()
@@ -532,8 +540,6 @@ class VM:
 
         # Look in locals
         for i, local in enumerate(frame.function.locals_info):
-            # The 'locals_info' list from the compiler includes the function itself
-            # and parameters. The name can be empty for the script-level function.
             if local.name and local.name.lexeme == name:
                 value = self.stack[frame.slots_offset + i]
                 print(f"(local) {name} = {self._value_to_string(value)}")
