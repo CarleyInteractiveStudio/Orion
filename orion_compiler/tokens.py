@@ -67,6 +67,7 @@ class TokenType(Enum):
     VAR = auto()
     VOID = auto()
     WHILE = auto()
+    DEBUG = auto()
 
     # End of file
     EOF = auto()
@@ -114,4 +115,5 @@ keywords = {
     "var": TokenType.VAR,
     "void": TokenType.VOID,
     "while": TokenType.WHILE,
+    "debug": TokenType.DEBUG,
 }

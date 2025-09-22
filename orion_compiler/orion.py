@@ -32,13 +32,7 @@ class Orion:
         lexer = Lexer(source)
         tokens = lexer.scan_tokens()
 
-        parser = Parser(tokens)
-        statements = parser.parse()
-
-        if not statements and len(tokens) > 1:
-            return
-
-        main_function = compile_source(statements)
+        main_function = compile_source(source)
 
         if main_function is None:
             self.had_error = True
@@ -151,6 +145,10 @@ class Orion:
             if self.had_runtime_error: exit(70)
         except FileNotFoundError:
             print(f"Error: File not found at '{path}'")
+            exit(1)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             exit(1)
 
     def run_prompt(self):

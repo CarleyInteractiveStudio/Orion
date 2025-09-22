@@ -26,6 +26,8 @@ class VM:
         self.frames: list[CallFrame] = []
         self.stack: list = []
         self.globals: dict = {}
+        self.debugging: bool = False
+        self.single_step: bool = False
 
         def native_print(*args):
             print(*[str(arg) for arg in args])
@@ -278,6 +280,9 @@ class VM:
         def read_constant():
             return frame.function.chunk.constants[read_byte()]
         while True:
+            if self.debugging and self.single_step:
+                self._debugger_hook()
+
             instruction = OpCode(read_byte())
             if instruction == OpCode.OP_RETURN:
                 result = self.pop()
@@ -473,6 +478,64 @@ class VM:
                     pairs[key] = value
                 dict_obj = OrionDict(pairs)
                 self.push(dict_obj)
+            elif instruction == OpCode.OP_DEBUG:
+                self._debugger_hook()
+
+
+    def _debugger_hook(self):
+        self.debugging = True
+        self.single_step = False
+
+        frame = self.frames[-1]
+        line = frame.function.chunk.lines[frame.ip - 1]
+        print(f"--- Debugger activated at line {line} ---")
+        print("Commands: (c)ontinue, (s)tep, (p)rint <var>, (q)uit")
+
+        while True:
+            command = input("(orion-dbg) ").strip()
+            if command == "c" or command == "continue":
+                self.debugging = False
+                break
+            elif command == "s" or command == "step":
+                self.single_step = True
+                break
+            elif command.startswith("p ") or command.startswith("print "):
+                var_name = command.split(maxsplit=1)[1]
+                self._print_variable(var_name)
+            elif command == "stack":
+                self._stack_trace()
+            elif command == "q" or command == "quit":
+                # A more graceful exit might be needed
+                exit(0)
+            else:
+                print(f"Unknown command: '{command}'")
+
+    def _print_variable(self, name: str):
+        # Check locals in the current frame
+        frame = self.frames[-1]
+        try:
+            # Find the index of the local variable by its name
+            local_index = frame.function.locals.index(name)
+            # Get the value from the stack
+            value = self.stack[frame.slots_offset + local_index]
+            print(f"{name} = {value}")
+            return
+        except (ValueError, IndexError):
+            # Not a local variable or index out of bounds, check globals
+            pass
+
+        if name in self.globals:
+            print(f"{name} = {self.globals[name]}")
+        else:
+            print(f"Variable '{name}' not found.")
+
+    def _stack_trace(self):
+        print("--- Call Stack ---")
+        for frame in reversed(self.frames):
+            function = frame.function
+            line = function.chunk.lines[frame.ip - 1] if frame.ip > 0 else 0
+            print(f"[line {line}] in {function.name or '<script>'}")
+
 
     def _call_value(self, callee: Any, arg_count: int) -> bool:
         if isinstance(callee, OrionNativeFunction):

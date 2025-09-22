@@ -30,17 +30,11 @@ def compile(source: str) -> OrionCompiledFunction | None:
 
     type_analyzer = TypeAnalyzer(native_module_specs)
     module_cache = {}
-    try:
-        main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
-        return main_function
-    except Exception as e:
-        print(f"FATAL: An unexpected error occurred during compilation: {e}")
-        return None
+    main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
+    return main_function
 
 def _compile_module_source(source: str, module_name: str, type_analyzer: 'TypeAnalyzer', module_cache: dict) -> OrionCompiledFunction | None:
-    print(f"DEBUG: Compiling module '{module_name}'...")
     if module_name in module_cache:
-        print(f"DEBUG: Module '{module_name}' found in cache.")
         return module_cache[module_name]
 
     lexer = Lexer(source)
@@ -48,15 +42,11 @@ def _compile_module_source(source: str, module_name: str, type_analyzer: 'TypeAn
     parser = Parser(tokens)
     statements = parser.parse()
     if not statements and len(tokens) > 1:
-        print(f"DEBUG: Parser failed for module '{module_name}'.")
         return None
-    print(f"DEBUG: Parser finished for module '{module_name}'.")
 
     type_analyzer.analyze(statements)
     if type_analyzer.had_error:
-        print(f"DEBUG: TypeAnalyzer failed for module '{module_name}'.")
         return None
-    print(f"DEBUG: TypeAnalyzer finished for module '{module_name}'.")
 
     script_fn_node = ast.Function(Token(None, f"<{module_name}>", None, 0), [], statements, None)
     compiler = Compiler(None, script_fn_node, "script", type_analyzer, module_cache)
@@ -87,10 +77,12 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, }
     def analyze(self, statements: list[ast.Stmt]):
+        print("DEBUG: Analyzing statements")
         for stmt in statements: self._analyze_stmt(stmt)
     def _analyze_stmt(self, stmt: ast.Stmt): stmt.accept(self)
     def _analyze_expr(self, expr: ast.Expr) -> Type: return expr.accept(self)
     def visit_var_stmt(self, stmt: ast.Var):
+        print(f"DEBUG: Visiting var statement for '{stmt.name.lexeme}'")
         declared_type = self._resolve_type_expr(stmt.type_annotation)
         if stmt.initializer:
             init_type = self._analyze_expr(stmt.initializer)
@@ -165,19 +157,30 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def _add_local(self, name: Token, type: Type): self.locals.append(Local(name, self.scope_depth, type))
     def _resolve_type_expr(self, type_expr: ast.Expr | None) -> Type:
         if type_expr is None: return ANY
-        if isinstance(type_expr, ast.Variable): return self.type_map.get(type_expr.name.lexeme, ANY)
+        if isinstance(type_expr, ast.Variable):
+            return self.type_map.get(type_expr.name.lexeme, ANY)
         if isinstance(type_expr, ast.GenericType):
             base_type_name = type_expr.base_type.name.lexeme
             params = [self._resolve_type_expr(p) for p in type_expr.type_parameters]
             if base_type_name == "list":
-                if len(params) != 1: print("Type Error: List type expects 1 type parameter."); self.had_error = True; return ANY_LIST
+                if len(params) != 1:
+                    print("Type Error: List type expects 1 type parameter.")
+                    self.had_error = True
+                    return ANY_LIST
                 return ListType(params[0])
             elif base_type_name == "dict":
-                if len(params) != 2: print("Type Error: Dict type expects 2 type parameters."); self.had_error = True; return ANY_DICT
+                if len(params) != 2:
+                    print("Type Error: Dict type expects 2 type parameters.")
+                    self.had_error = True
+                    return ANY_DICT
                 return DictType(params[0], params[1])
-            else: print(f"Type Error: Type '{base_type_name}' is not generic."); self.had_error = True; return ANY
+            else:
+                print(f"Type Error: Type '{base_type_name}' is not generic.")
+                self.had_error = True
+                return ANY
         return ANY
     def _get_var_type(self, name: Token) -> Type:
+        print(f"DEBUG: Getting type for variable '{name.lexeme}'")
         for local in reversed(self.locals):
             if name.lexeme == local.name.lexeme: return local.type
         if name.lexeme in self.globals: return self.globals[name.lexeme]
@@ -336,6 +339,8 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         elif object_type != ANY:
             type_error(expr.bracket, f"Object of type {object_type} is not subscriptable."); self.had_error = True
         return value_type
+    def visit_debug_stmt(self, stmt: ast.Debug):
+        pass
     def _infer_type_from_style_prop(self, prop: ast.StyleProp) -> Type:
         if not prop.values: return NIL
         if len(prop.values) == 1:
@@ -457,7 +462,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self.scope_depth -= 1
         while self.locals and self.locals[-1].depth > self.scope_depth:
             self._emit_byte(OpCode.OP_POP); self.locals.pop()
-    def _add_local(self, name: Token, type: Type): self.locals.append(Local(name, self.scope_depth, type))
+    def _add_local(self, name: Token, type: Type):
+        self.locals.append(Local(name, self.scope_depth, type))
+        self.function.locals.append(name.lexeme)
     def _resolve_local(self, name: Token) -> int:
         for i in range(len(self.locals) - 1, -1, -1):
             if name.lexeme == self.locals[i].name.lexeme: return i
@@ -528,6 +535,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys))
     def visit_for_stmt(self, stmt: ast.Stmt): pass
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
+
+    def visit_debug_stmt(self, stmt: ast.Debug):
+        self._emit_byte(OpCode.OP_DEBUG)
 
     def visit_class_stmt(self, stmt: ast.Class):
         class_name = stmt.name.lexeme

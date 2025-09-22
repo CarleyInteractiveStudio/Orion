@@ -83,6 +83,8 @@ class Parser:
             return self._while_statement()
         if self._match(TokenType.LEFT_BRACE):
             return ast.Block(self._block())
+        if self._match(TokenType.DEBUG):
+            return self._debug_statement()
         return self._expression_statement()
 
     def _if_statement(self) -> ast.Stmt:
@@ -155,6 +157,12 @@ class Parser:
 
         self._consume(TokenType.SEMICOLON, "Expect ';' after return value.")
         return ast.Return(keyword, value)
+
+    def _debug_statement(self) -> ast.Stmt:
+        """Parses a debug statement."""
+        keyword = self._previous()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after 'debug'.")
+        return ast.Debug(keyword)
 
     def _function(self, kind: str) -> ast.Function:
         """Parses a function declaration."""
