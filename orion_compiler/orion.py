@@ -6,7 +6,9 @@ import ctypes
 
 from .lexer import Lexer
 from .parser import Parser
-from .compiler import compile as compile_source
+from .compiler import Compiler as OrionCompiler
+from . import ast_nodes as ast
+from .tokens import Token
 from .vm import VM, InterpretResult
 from .objects import OrionComponentInstance, OrionList
 from .renderer import GraphicalRenderer
@@ -38,7 +40,8 @@ class Orion:
         if not statements and len(tokens) > 1:
             return
 
-        main_function = compile_source(statements)
+        compiler = OrionCompiler(None, ast.Function(Token(None, "<script>", None, 0), [], statements, None), "script", None, {})
+        main_function = compiler._end_compiler()
 
         if main_function is None:
             self.had_error = True

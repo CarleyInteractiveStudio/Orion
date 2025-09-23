@@ -33,7 +33,16 @@ class LLVMBackend(ast.StmtVisitor, ast.ExprVisitor):
         raise ValueError(f"Variable '{expr.name.lexeme}' not found")
 
     def visit_logical_expr(self, expr: 'Logical'): pass
-    def visit_call_expr(self, expr: 'Call'): pass
+    def visit_call_expr(self, expr: ast.Call):
+        callee_name = expr.callee.name.lexeme
+        callee_func = self.named_values.get(callee_name)
+
+        if callee_func is None:
+            raise ValueError(f"Function '{callee_name}' not found")
+
+        args = [arg.accept(self) for arg in expr.arguments]
+
+        return self.builder.call(callee_func, args, 'calltmp')
     def visit_get_expr(self, expr: 'Get'): pass
     def visit_set_expr(self, expr: 'Set'): pass
     def visit_this_expr(self, expr: 'This'): pass
@@ -149,10 +158,27 @@ class LLVMBackend(ast.StmtVisitor, ast.ExprVisitor):
     # --- Actual implementations ---
     def visit_function_stmt(self, stmt: ast.Function):
         func_name = stmt.name.lexeme
-        func_type = ir.FunctionType(ir.IntType(32), [])
+
+        # Assume all params are i32 for now
+        param_types = [ir.IntType(32)] * len(stmt.params)
+        func_type = ir.FunctionType(ir.IntType(32), param_types)
+
         self.function = ir.Function(self.module, func_type, name=func_name)
+        self.named_values[func_name] = self.function
+
+        # Name the arguments
+        for i, arg in enumerate(self.function.args):
+            arg.name = stmt.params[i].name.lexeme
+
         block = self.function.append_basic_block(name="entry")
         self.builder = ir.IRBuilder(block)
+
+        # Allocate space for the arguments and store them
+        for arg in self.function.args:
+            ptr = self.builder.alloca(ir.IntType(32), name=arg.name)
+            self.builder.store(arg, ptr)
+            self.named_values[arg.name] = ptr
+
         for body_stmt in stmt.body:
             body_stmt.accept(self)
 
