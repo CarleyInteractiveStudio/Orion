@@ -1,6 +1,6 @@
 import sdl2
-from objects import OrionComponentInstance
-from vm import VM
+from .objects import OrionComponentInstance
+from .vm import VM
 
 class EventDispatcher:
     """

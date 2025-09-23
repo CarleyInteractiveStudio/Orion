@@ -1,1 +1,4 @@
 requests
+llvmlite
+PySDL2
+skia-python

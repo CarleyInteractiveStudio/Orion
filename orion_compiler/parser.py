@@ -1,7 +1,7 @@
 from typing import List, Optional
 
-from tokens import Token, TokenType
-import ast_nodes as ast
+from .tokens import Token, TokenType
+from . import ast_nodes as ast
 
 
 class ParseError(RuntimeError):

@@ -4,13 +4,13 @@ import sdl2.ext
 import skia
 import ctypes
 
-from lexer import Lexer
-from parser import Parser
-from compiler import compile as compile_source
-from vm import VM, InterpretResult
-from objects import OrionComponentInstance, OrionList
-from renderer import GraphicalRenderer
-from event_dispatcher import EventDispatcher
+from .lexer import Lexer
+from .parser import Parser
+from .compiler import compile as compile_source
+from .vm import VM, InterpretResult
+from .objects import OrionComponentInstance, OrionList
+from .renderer import GraphicalRenderer
+from .event_dispatcher import EventDispatcher
 
 
 class Orion:
@@ -32,7 +32,13 @@ class Orion:
         lexer = Lexer(source)
         tokens = lexer.scan_tokens()
 
-        main_function = compile_source(source)
+        parser = Parser(tokens)
+        statements = parser.parse()
+
+        if not statements and len(tokens) > 1:
+            return
+
+        main_function = compile_source(statements)
 
         if main_function is None:
             self.had_error = True
@@ -170,11 +176,23 @@ class Orion:
 
 if __name__ == "__main__":
     import sys
-    orion = Orion()
-    if len(sys.argv) > 2:
-        print("Usage: orion [script]")
-        sys.exit(64)
-    elif len(sys.argv) == 2:
-        orion.run_file(sys.argv[1])
+    if "--llvm" in sys.argv:
+        from .llvm_compiler import compile_orion_to_object_file
+        script_index = sys.argv.index("--llvm") + 1
+        if script_index < len(sys.argv):
+            filepath = sys.argv[script_index]
+            with open(filepath, 'r') as f:
+                source = f.read()
+            compile_orion_to_object_file(source, "output.o")
+        else:
+            print("Usage: orion --llvm <script>")
+            sys.exit(64)
     else:
-        orion.run_prompt()
+        orion = Orion()
+        if len(sys.argv) > 2:
+            print("Usage: orion [script]")
+            sys.exit(64)
+        elif len(sys.argv) == 2:
+            orion.run_file(sys.argv[1])
+        else:
+            orion.run_prompt()

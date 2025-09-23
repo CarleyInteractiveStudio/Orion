@@ -1,6 +1,6 @@
 from typing import List, Any
 
-from tokens import Token, TokenType, keywords
+from .tokens import Token, TokenType, keywords
 
 
 class Lexer:

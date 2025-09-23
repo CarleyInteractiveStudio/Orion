@@ -1,13 +1,13 @@
 import os
 from dataclasses import dataclass
-import ast_nodes as ast
-from bytecode import Chunk, OpCode
-from tokens import Token, TokenType
-from objects import OrionCompiledFunction, OrionComponentDef
-from orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
-from errors import type_error
-from lexer import Lexer
-from parser import Parser
+from . import ast_nodes as ast
+from .bytecode import Chunk, OpCode
+from .tokens import Token, TokenType
+from .objects import OrionCompiledFunction, OrionComponentDef
+from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT
+from .errors import type_error
+from .lexer import Lexer
+from .parser import Parser
 
 # --- Module Resolution ---
 def _find_module(module_name: str) -> str | None:
@@ -21,44 +21,17 @@ def _find_module(module_name: str) -> str | None:
     return None
 
 # --- Top-Level Compile Function ---
-def compile(source: str) -> OrionCompiledFunction | None:
-    # This is a bit of a hack to get native module definitions to the analyzer.
-    # In a larger system, this would come from a shared configuration.
-    from vm import VM
-    temp_vm = VM()
-    native_module_specs = {name: {field: FUNCTION for field in mod.keys()} for name, mod in temp_vm.native_modules.items()}
+from .llvm_backend import LLVMBackend
 
-    type_analyzer = TypeAnalyzer(native_module_specs)
-    module_cache = {}
-    main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
-    return main_function
-
-def _compile_module_source(source: str, module_name: str, type_analyzer: 'TypeAnalyzer', module_cache: dict) -> OrionCompiledFunction | None:
-    if module_name in module_cache:
-        return module_cache[module_name]
-
+def compile_to_llvm_ir(source: str):
     lexer = Lexer(source)
     tokens = lexer.scan_tokens()
     parser = Parser(tokens)
     statements = parser.parse()
-    if not statements and len(tokens) > 1:
-        return None
 
-    type_analyzer.analyze(statements)
-    if type_analyzer.had_error:
-        return None
-
-    script_fn_node = ast.Function(Token(None, f"<{module_name}>", None, 0), [], statements, None)
-    compiler = Compiler(None, script_fn_node, "script", type_analyzer, module_cache)
-
-    compiled_function = compiler._end_compiler()
-    if compiler.had_error:
-        print(f"DEBUG: Compiler failed for module '{module_name}'.")
-        return None
-
-    print(f"DEBUG: Successfully compiled module '{module_name}'.")
-    module_cache[module_name] = compiled_function
-    return compiled_function
+    backend = LLVMBackend()
+    backend.generate(statements)
+    return backend.module
 
 @dataclass
 class Local:

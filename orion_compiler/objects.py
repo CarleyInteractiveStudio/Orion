@@ -1,6 +1,6 @@
-from bytecode import Chunk
+from .bytecode import Chunk
 from typing import Callable, Any
-from tokens import Token
+from .tokens import Token
 
 from typing import List
 

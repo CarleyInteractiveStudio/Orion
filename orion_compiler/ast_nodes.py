@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Any, Optional
 
-from tokens import Token
+from .tokens import Token
 
 
 # --- Visitor Pattern Definition ---

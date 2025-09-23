@@ -1,7 +1,7 @@
-from bytecode import Chunk, OpCode
-from objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
-from tokens import Token, TokenType
-from lexer import Lexer
+from .bytecode import Chunk, OpCode
+from .objects import OrionClass, OrionClassInstance, OrionCompiledFunction, OrionNativeFunction, OrionComponentDef, OrionComponentInstance, OrionBoundMethod, OrionInstance, OrionList, OrionDict, StateProxy
+from .tokens import Token, TokenType
+from .lexer import Lexer
 from dataclasses import dataclass
 from typing import Any
 import time
