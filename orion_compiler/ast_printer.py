@@ -1,5 +1,5 @@
-from . ast_nodes as ast
-from . tokens import Token
+import orion_compiler.ast_nodes as ast
+from orion_compiler.tokens import Token
 
 class AstPrinter(ast.ExprVisitor, ast.StmtVisitor):
     """

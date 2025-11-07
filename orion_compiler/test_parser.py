@@ -1,7 +1,7 @@
 import sys
-from . lexer import Lexer
-from . parser import Parser
-from ast_printer import AstPrinter
+from orion_compiler.lexer import Lexer
+from orion_compiler.parser import Parser
+from orion_compiler.ast_printer import AstPrinter
 
 def run_parser_test(name, source_code, expected_ast_str):
     """
