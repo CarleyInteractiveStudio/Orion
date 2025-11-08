@@ -21,7 +21,7 @@ def _find_module(module_name: str) -> str | None:
     return None
 
 # --- Top-Level Compile Function ---
-def compile(source: str, type_analyzer: 'TypeAnalyzer' = None) -> OrionCompiledFunction | None:
+def compile(source: str, type_analyzer: 'TypeAnalyzer' = None, module_name: str = "<script>") -> OrionCompiledFunction | None:
     from .vm import VM
     if type_analyzer is None:
         temp_vm = VM()
@@ -30,7 +30,7 @@ def compile(source: str, type_analyzer: 'TypeAnalyzer' = None) -> OrionCompiledF
 
     module_cache = {}
     try:
-        main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
+        main_function = _compile_module_source(source, module_name, type_analyzer, module_cache)
         return main_function
     except Exception as e:
         print(f"FATAL: An unexpected error occurred during compilation: {e}")
@@ -51,7 +51,7 @@ def _compile_module_source(source: str, module_name: str, type_analyzer: 'TypeAn
         return None
     print(f"DEBUG: Parser finished for module '{module_name}'.")
 
-    type_analyzer.analyze(statements)
+    type_analyzer.analyze(statements, module_name=module_name)
     if type_analyzer.had_error:
         print(f"DEBUG: TypeAnalyzer failed for module '{module_name}'.")
         return None
@@ -88,11 +88,52 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
+        self.module_members: dict[str, dict[str, Type]] = {}
         self.scope_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
-    def analyze(self, statements: list[ast.Stmt]):
-        for stmt in statements: self._analyze_stmt(stmt)
+
+    def analyze(self, statements: list[ast.Stmt], module_name: str = "<script>"):
+        self.current_module_name = module_name
+        if module_name not in self.module_members:
+            self.module_members[module_name] = {}
+
+        # First pass: register all top-level names
+        for stmt in statements:
+            if isinstance(stmt, ast.ComponentStmt):
+                self._register_component(stmt)
+            elif isinstance(stmt, ast.Class):
+                self._register_class(stmt)
+            elif isinstance(stmt, ast.Function):
+                if self.current_module_name != '<script>':
+                    self.module_members[self.current_module_name][stmt.name.lexeme] = FUNCTION
+                else:
+                    self.globals[stmt.name.lexeme] = FUNCTION
+
+        # Second pass: analyze bodies
+        for stmt in statements:
+            self._analyze_stmt(stmt)
+
+    def _register_component(self, stmt: ast.ComponentStmt):
+        from .orion_types import ComponentType, TYPE
+        component_name = stmt.name.lexeme
+        new_component_type = ComponentType(component_name)
+        self.type_map[component_name] = new_component_type
+        if self.current_module_name != '<script>':
+            self.module_members[self.current_module_name][component_name] = TYPE
+        else:
+            self.globals[component_name] = TYPE
+
+    def _register_class(self, stmt: ast.Class):
+        from .orion_types import ClassType, CLASS
+        class_name = stmt.name.lexeme
+        new_class_type = ClassType(class_name)
+        self.type_map[class_name] = new_class_type
+        if self.current_module_name != '<script>':
+            self.module_members[self.current_module_name][class_name] = CLASS
+        else:
+            self.globals[class_name] = CLASS
+
     def _analyze_stmt(self, stmt: ast.Stmt): stmt.accept(self)
     def _analyze_expr(self, expr: ast.Expr) -> Type: return expr.accept(self)
     def visit_var_stmt(self, stmt: ast.Var):
@@ -229,7 +270,9 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             module_name = expr.object.name.lexeme
             member_name = expr.name.lexeme
             if module_name in self.native_modules and member_name in self.native_modules[module_name]:
-                return self.native_modules[module_name][member_name] # Should be FUNCTION
+                return self.native_modules[module_name][member_name]
+            if module_name in self.module_members and member_name in self.module_members[module_name]:
+                return self.module_members[module_name][member_name]
             type_error(expr.name, f"Module '{module_name}' has no member named '{member_name}'."); self.had_error = True; return ANY
 
         if object_type == ANY: return ANY
@@ -563,6 +606,12 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         if jump > 0xffff: self.had_error = True; print("Too much code to jump over.")
         self._current_chunk().code[offset] = (jump >> 8) & 0xff
         self._current_chunk().code[offset + 1] = jump & 0xff
+    def _get_token_from_expr(self, expr: ast.Expr) -> Token:
+        if isinstance(expr, (ast.Binary, ast.Unary)): return expr.operator
+        if isinstance(expr, ast.Variable): return expr.name
+        if isinstance(expr, ast.Literal): return Token(None, str(expr.value), None, 0)
+        if isinstance(expr, (ast.GetSubscript, ast.SetSubscript)): return expr.bracket
+        return Token(None, "expression", None, 0)
     def visit_logical_expr(self, expr: ast.Logical): pass
     def visit_get_expr(self, expr: ast.Get):
         self._compile_expr(expr.object)
@@ -606,9 +655,16 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
     def visit_use_stmt(self, stmt: ast.UseStmt):
-        # The dependency resolver in orion.py handles loading modules.
-        # This statement is just for dependency analysis.
-        pass
+        module_name = stmt.name.lexeme
+        alias = stmt.alias.lexeme if stmt.alias else module_name
+
+        is_native = module_name in self.type_analyzer.native_modules
+        if is_native:
+            self._emit_opcode_and_constant_index(OpCode.OP_IMPORT_NATIVE, module_name, stmt.name.line)
+        else:
+            self._emit_opcode_and_constant_index(OpCode.OP_IMPORT_MODULE, module_name, stmt.name.line)
+
+        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, alias, stmt.name.line)
     def visit_list_literal_expr(self, expr: ast.ListLiteral):
         for element in expr.elements: self._compile_expr(element)
         self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements), 0) # No token available

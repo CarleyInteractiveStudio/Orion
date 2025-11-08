@@ -94,11 +94,16 @@ class Orion:
                 print(f"INFO: Loading module '{os.path.basename(path)}'...")
                 with open(path, 'r', encoding='utf-8') as f:
                     source = f.read()
-                compiled_function = compile_source(source, type_analyzer=type_analyzer)
+                module_name = os.path.splitext(os.path.basename(path))[0]
+                compiled_function = compile_source(source, type_analyzer=type_analyzer, module_name=module_name)
                 if compiled_function is None:
                     self.had_error = True
                     print(f"ERROR: Compilation failed for '{path}'.")
                     break
+
+                # Store the compiled function in the main VM's globals so it can be imported.
+                self.vm.globals[module_name] = compiled_function
+
                 result, _ = self.vm.interpret(compiled_function)
                 if result != InterpretResult.OK:
                     self.had_runtime_error = True

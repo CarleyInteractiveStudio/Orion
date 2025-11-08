@@ -571,6 +571,22 @@ class VM:
                 module_instance.fields = native_module.copy() # Shallow copy is fine
 
                 self.push(module_instance)
+            elif instruction == OpCode.OP_IMPORT_MODULE:
+                module_name = read_constant()
+                if module_name not in self.globals:
+                    self._runtime_error(f"Module '{module_name}' not found.")
+                    return InterpretResult.RUNTIME_ERROR, None
+
+                module_func = self.globals[module_name]
+
+                # We need a new VM instance to run the module's code in its own context.
+                module_vm = VM()
+                module_vm.interpret(module_func)
+
+                module_instance = OrionInstance()
+                module_instance.fields = module_vm.globals
+                self.push(module_instance)
+
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]

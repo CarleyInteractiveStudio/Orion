@@ -72,6 +72,7 @@ class OpCode(IntEnum):
 
     # --- Modules ---
     OP_IMPORT_NATIVE = 39
+    OP_IMPORT_MODULE = 41
 
     # --- Debugging ---
     OP_DEBUG = 40

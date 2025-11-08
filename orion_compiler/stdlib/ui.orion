@@ -2,6 +2,7 @@
 // Version 0.3
 module ui;
 use draw;
+use str;
 
 // A simple text label component.
 component Label {
@@ -118,5 +119,44 @@ component ScrollView {
         // The ScrollView itself doesn't draw anything, it just provides a clipping
         // area and returns its children to be rendered by the layout engine.
         return this.children;
+    }
+}
+
+// A text input component.
+component TextInput {
+    text: "";
+    width: 200;
+    height: 40;
+    is_focused: false;
+    x: 0;
+    y: 0;
+
+    on_mouse_down(x, y) {
+        if (x >= this.x and x <= this.x + this.width and y >= this.y and y <= this.y + this.height) {
+            this.is_focused = true;
+        } else {
+            this.is_focused = false;
+        }
+    }
+
+    on_key_down(key) {
+        if (this.is_focused) {
+            if (key == "BACKSPACE") {
+                if (str.length(this.text) > 0) {
+                    this.text = slice(this.text, 0, str.length(this.text) - 1);
+                }
+            } else {
+                this.text = this.text + key;
+            }
+        }
+    }
+
+    render() {
+        var bg_color = 4291543040;
+        if (this.is_focused) {
+            bg_color = 4289379242;
+        }
+        draw.box({ "x": this.x, "y": this.y, "width": this.width, "height": this.height, "color": bg_color });
+        draw.text({ "text": this.text, "x": this.x + 5, "y": this.y + 5, "color": 4278190080 });
     }
 }
