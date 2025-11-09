@@ -23,6 +23,20 @@ component Label {
     }
 }
 
+// Layout components. These are special and handled by the layout engine.
+component Column {
+    children: [];
+    spacing: 0;
+    padding: 0;
+    align: "start";
+}
+component Row {
+    children: [];
+    spacing: 0;
+    padding: 0;
+    align: "start";
+}
+
 // A stateful checkbox component.
 component Checkbox {
     x: 0;
@@ -158,5 +172,79 @@ component TextInput {
         }
         draw.box({ "x": this.x, "y": this.y, "width": this.width, "height": this.height, "color": bg_color });
         draw.text({ "text": this.text, "x": this.x + 5, "y": this.y + 5, "color": 4278190080 });
+    }
+}
+
+component Slider {
+    // --- Properties ---
+    x: 0;
+    y: 0;
+    width: 200;
+    height: 20;
+    min: 0;
+    max: 100;
+    value: 50;
+    onChange: nil;
+
+    // --- State ---
+    state: {
+        is_dragging: false
+    };
+
+    // --- Methods ---
+    onMouseDown(event) {
+        this.state.is_dragging = true;
+    }
+
+    onMouseUp(event) {
+        this.state.is_dragging = false;
+    }
+
+    onMouseMove(event) {
+        if (this.state.is_dragging) {
+            // Calculate the new value based on mouse position
+            var raw_value = ((event.x - this.x) / this.width) * (this.max - this.min) + this.min;
+
+            // Clamp the value to be within min and max
+            if (raw_value < this.min) {
+                raw_value = this.min;
+            }
+            if (raw_value > this.max) {
+                raw_value = this.max;
+            }
+            this.value = raw_value;
+
+            // Call the onChange callback if it exists
+            if (this.onChange != nil) {
+                this.onChange(this.value);
+            }
+        }
+    }
+
+    render() {
+        // --- Draw the track ---
+        var track_height = 4;
+        var track_y = this.y + (this.height / 2) - (track_height / 2);
+        draw.box({
+            x: this.x,
+            y: track_y,
+            width: this.width,
+            height: track_height,
+            color: "#CCCCCC"
+        });
+
+        // --- Draw the thumb ---
+        var thumb_width = 10;
+        var thumb_height = this.height;
+        var value_percent = (this.value - this.min) / (this.max - this.min);
+        var thumb_x = this.x + (value_percent * (this.width - thumb_width));
+
+        draw.box({
+            x: thumb_x,
+            y: this.y,
+            width: thumb_width,
+            height: thumb_height,
+            color: "#888888"
+        });
     }
 }

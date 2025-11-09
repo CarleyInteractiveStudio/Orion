@@ -1,8 +1,7 @@
 use ui;
-use slider;
 
 // Create a label to display the slider's value
-var value_label = Label({
+var value_label = ui.Label({
     x: 50,
     y: 80,
     text: "Value: 50"
@@ -14,7 +13,7 @@ function onSliderChange(new_value) {
 }
 
 // Create the slider
-var my_slider = Slider({
+var my_slider = ui.Slider({
     x: 50,
     y: 50,
     width: 300,
