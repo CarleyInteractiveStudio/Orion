@@ -100,6 +100,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             }
         }
         self.scope_depth: int = 0
+        self.loop_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
 
@@ -193,10 +194,23 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self._analyze_stmt(stmt.then_branch)
         if stmt.else_branch: self._analyze_stmt(stmt.else_branch)
     def visit_while_stmt(self, stmt: ast.While):
+        self.loop_depth += 1
         condition_type = self._analyze_expr(stmt.condition)
         if condition_type != ANY and condition_type != BOOL:
             type_error(self._get_token_from_expr(stmt.condition), f"While condition must be a boolean, but got {condition_type}."); self.had_error = True
         self._analyze_stmt(stmt.body)
+        self.loop_depth -= 1
+
+    def visit_break_stmt(self, stmt: ast.BreakStmt):
+        if self.loop_depth == 0:
+            type_error(stmt.keyword, "Cannot use 'break' outside of a loop.")
+            self.had_error = True
+
+    def visit_continue_stmt(self, stmt: ast.ContinueStmt):
+        if self.loop_depth == 0:
+            type_error(stmt.keyword, "Cannot use 'continue' outside of a loop.")
+            self.had_error = True
+
     def visit_block_stmt(self, stmt: ast.Block):
         self._begin_scope(); self.analyze(stmt.statements); self._end_scope()
     def visit_expression_stmt(self, stmt: ast.Expression): self._analyze_expr(stmt.expression)
@@ -342,6 +356,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
 
     def visit_for_stmt(self, stmt: ast.ForStmt):
         self._begin_scope()
+        self.loop_depth += 1
         if stmt.initializer:
             self._analyze_stmt(stmt.initializer)
         if stmt.condition:
@@ -353,6 +368,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             self._analyze_expr(stmt.increment)
 
         self._analyze_stmt(stmt.body)
+        self.loop_depth -= 1
         self._end_scope()
 
     def visit_class_stmt(self, stmt: ast.Class):
@@ -644,11 +660,28 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._patch_jump(else_jump)
     def visit_while_stmt(self, stmt: ast.While):
         loop_start = len(self._current_chunk().code)
+
         self._compile_expr(stmt.condition)
         line = self._get_token_from_expr(stmt.condition).line
         exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, line)
-        self._emit_byte(OpCode.OP_POP, line); self._compile_stmt(stmt.body)
-        self._emit_loop(loop_start, line); self._patch_jump(exit_jump); self._emit_byte(OpCode.OP_POP, line)
+        self._emit_byte(OpCode.OP_POP, line)
+
+        # Store the loop context
+        if not hasattr(self, 'loop_jumps'):
+            self.loop_jumps = []
+        self.loop_jumps.append({'exit': [], 'start': loop_start})
+
+        self._compile_stmt(stmt.body)
+
+        self._emit_loop(loop_start, line)
+        self._patch_jump(exit_jump)
+        self._emit_byte(OpCode.OP_POP, line)
+
+        # Patch break statements
+        loop = self.loop_jumps.pop()
+        for jump in loop['exit']:
+            self._patch_jump(jump)
+
     def visit_function_stmt(self, stmt: ast.Function):
         compiler = Compiler(self, stmt, "function", self.type_analyzer, self.module_cache)
         function_obj = compiler._end_compiler()
@@ -810,26 +843,29 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_for_stmt(self, stmt: ast.ForStmt):
         self._begin_scope()
 
-        # 1. Initializer
         if stmt.initializer:
             self._compile_stmt(stmt.initializer)
 
         loop_start = len(self._current_chunk().code)
 
-        # 2. Condition
         exit_jump = -1
         if stmt.condition:
             self._compile_expr(stmt.condition)
-            exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, 0) # Placeholder line
+            exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, 0)
             self._emit_byte(OpCode.OP_POP, 0)
 
-        # 3. Body
-        self._compile_stmt(stmt.body)
+        if not hasattr(self, 'loop_jumps'):
+            self.loop_jumps = []
 
-        # 4. Increment
+        increment_start = len(self._current_chunk().code)
         if stmt.increment:
+            # The body will jump here for 'continue'
             self._compile_expr(stmt.increment)
             self._emit_byte(OpCode.OP_POP, 0)
+
+        self.loop_jumps.append({'exit': [], 'start': increment_start})
+
+        self._compile_stmt(stmt.body)
 
         self._emit_loop(loop_start, 0)
 
@@ -837,7 +873,30 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
             self._patch_jump(exit_jump)
             self._emit_byte(OpCode.OP_POP, 0)
 
+        loop = self.loop_jumps.pop()
+        for jump in loop['exit']:
+            self._patch_jump(jump)
+
         self._end_scope()
+
+    def visit_break_stmt(self, stmt: ast.BreakStmt):
+        if not hasattr(self, 'loop_jumps') or not self.loop_jumps:
+            # This should be caught by the TypeAnalyzer, but as a safeguard:
+            self.had_error = True
+            print(f"Compile Error at line {stmt.keyword.line}: 'break' outside loop.")
+            return
+
+        jump = self._emit_jump(OpCode.OP_JUMP, stmt.keyword.line)
+        self.loop_jumps[-1]['exit'].append(jump)
+
+    def visit_continue_stmt(self, stmt: ast.ContinueStmt):
+        if not hasattr(self, 'loop_jumps') or not self.loop_jumps:
+            self.had_error = True
+            print(f"Compile Error at line {stmt.keyword.line}: 'continue' outside loop.")
+            return
+
+        loop = self.loop_jumps[-1]
+        self._emit_loop(loop['start'], stmt.keyword.line)
 
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
 

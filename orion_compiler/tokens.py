@@ -40,8 +40,10 @@ class TokenType(Enum):
     AND = auto()
     AS = auto()
     BOOL = auto()
+    BREAK = auto()
     CLASS = auto()
     COMPONENT = auto()
+    CONTINUE = auto()
     CONST = auto()
     DEBUG = auto()
     ELSE = auto()
@@ -89,8 +91,10 @@ keywords = {
     "and": TokenType.AND,
     "as": TokenType.AS,
     "bool": TokenType.BOOL,
+    "break": TokenType.BREAK,
     "class": TokenType.CLASS,
     "component": TokenType.COMPONENT,
+    "continue": TokenType.CONTINUE,
     "const": TokenType.CONST,
     "debug": TokenType.DEBUG,
     "else": TokenType.ELSE,

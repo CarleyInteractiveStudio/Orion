@@ -142,6 +142,14 @@ class StmtVisitor(ABC):
     def visit_for_stmt(self, stmt: 'ForStmt'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_break_stmt(self, stmt: 'BreakStmt'):
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_continue_stmt(self, stmt: 'ContinueStmt'):
+        raise NotImplementedError
+
 
 # --- Abstract Base Classes for AST Nodes ---
 
@@ -460,3 +468,19 @@ class ForStmt(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_for_stmt(self)
+
+
+@dataclass
+class BreakStmt(Stmt):
+    keyword: Token
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_break_stmt(self)
+
+
+@dataclass
+class ContinueStmt(Stmt):
+    keyword: Token
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_continue_stmt(self)
