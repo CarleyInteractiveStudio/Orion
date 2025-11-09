@@ -517,26 +517,36 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._compile_expr(expr.right)
 
         op_type = expr.operator.token_type.name
-        if op_type == 'BANG_EQUAL':
-            self._emit_byte(OpCode.OP_EQUAL, expr.operator.line)
-            self._emit_byte(OpCode.OP_NOT, expr.operator.line)
-        elif op_type == 'PLUS':
-            left_type = self._get_expr_type(expr.left)
-            right_type = self._get_expr_type(expr.right)
+        left_type = self._get_expr_type(expr.left)
+        right_type = self._get_expr_type(expr.right)
 
-            if left_type == NUMBER and right_type == NUMBER:
-                self._emit_byte(OpCode.OP_ADD_NUMBER, expr.operator.line)
-            elif left_type == STRING and right_type == STRING:
-                self._emit_byte(OpCode.OP_ADD_STRING, expr.operator.line)
-            elif left_type == ANY or right_type == ANY:
-                self._emit_byte(OpCode.OP_ADD, expr.operator.line)
+        if left_type == NUMBER and right_type == NUMBER:
+            if op_type == 'PLUS': self._emit_byte(OpCode.OP_ADD_NUMBER, expr.operator.line)
+            elif op_type == 'MINUS': self._emit_byte(OpCode.OP_SUBTRACT_NUMBER, expr.operator.line)
+            elif op_type == 'STAR': self._emit_byte(OpCode.OP_MULTIPLY_NUMBER, expr.operator.line)
+            elif op_type == 'SLASH': self._emit_byte(OpCode.OP_DIVIDE_NUMBER, expr.operator.line)
+            elif op_type == 'GREATER': self._emit_byte(OpCode.OP_GREATER_NUMBER, expr.operator.line)
+            elif op_type == 'LESS': self._emit_byte(OpCode.OP_LESS_NUMBER, expr.operator.line)
+            elif op_type == 'EQUAL_EQUAL': self._emit_byte(OpCode.OP_EQUAL_NUMBER, expr.operator.line)
+            elif op_type == 'BANG_EQUAL':
+                self._emit_byte(OpCode.OP_EQUAL_NUMBER, expr.operator.line)
+                self._emit_byte(OpCode.OP_NOT, expr.operator.line)
             else:
-                # This should not happen if the type checker is correct
-                # but as a fallback, use the generic add
-                self._emit_byte(OpCode.OP_ADD, expr.operator.line)
+                # Fallback for other ops if needed
+                op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
+                if op_type in op_map:
+                    self._emit_byte(op_map[op_type], expr.operator.line)
+        elif op_type == 'PLUS' and left_type == STRING and right_type == STRING:
+            self._emit_byte(OpCode.OP_ADD_STRING, expr.operator.line)
         else:
-            op_map = {'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
-            self._emit_byte(op_map[op_type], expr.operator.line)
+            # Generic operators for ANY type or other type combinations
+            if op_type == 'BANG_EQUAL':
+                self._emit_byte(OpCode.OP_EQUAL, expr.operator.line)
+                self._emit_byte(OpCode.OP_NOT, expr.operator.line)
+            else:
+                op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
+                if op_type in op_map:
+                    self._emit_byte(op_map[op_type], expr.operator.line)
 
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)

@@ -26,13 +26,19 @@ class OpCode(IntEnum):
     OP_ADD_NUMBER = 42
     OP_ADD_STRING = 43
     OP_SUBTRACT = 8
+    OP_SUBTRACT_NUMBER = 44
     OP_MULTIPLY = 9
+    OP_MULTIPLY_NUMBER = 45
     OP_DIVIDE = 10
+    OP_DIVIDE_NUMBER = 46
 
     # --- Comparison ---
     OP_EQUAL = 11
+    OP_EQUAL_NUMBER = 47
     OP_GREATER = 12
+    OP_GREATER_NUMBER = 48
     OP_LESS = 13
+    OP_LESS_NUMBER = 49
 
     # --- Variables ---
     OP_DEFINE_GLOBAL = 14
