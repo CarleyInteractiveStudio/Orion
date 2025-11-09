@@ -1,11 +1,32 @@
 // text_input_test.orion
 use ui;
 
-var text_input = ui.TextInput({ x: 50, y: 50 });
+var text_input1 = ui.TextInput({
+    x: 50,
+    y: 50,
+    width: 300
+});
+
+var text_input2 = ui.TextInput({
+    x: 50,
+    y: 100,
+    width: 300
+});
+
+var info_label = ui.Label({
+    x: 50,
+    y: 150,
+    text: "Type in the boxes and use arrow keys!"
+});
+
+var column = ui.Column({
+    children: [text_input1, text_input2, info_label],
+    spacing: 10
+});
 
 component App {
     render() {
-        text_input.render();
+        return [column];
     }
 }
 
