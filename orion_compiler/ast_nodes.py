@@ -138,6 +138,10 @@ class StmtVisitor(ABC):
     def visit_debug_stmt(self, stmt: 'DebugStmt'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_for_stmt(self, stmt: 'ForStmt'):
+        raise NotImplementedError
+
 
 # --- Abstract Base Classes for AST Nodes ---
 
@@ -445,3 +449,14 @@ class DebugStmt(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_debug_stmt(self)
+
+
+@dataclass
+class ForStmt(Stmt):
+    initializer: Optional[Stmt]
+    condition: Optional[Expr]
+    increment: Optional[Expr]
+    body: Stmt
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_for_stmt(self)

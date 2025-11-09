@@ -126,18 +126,7 @@ class Parser:
 
         body = self._statement()
 
-        # Desugaring
-        if increment is not None:
-            body = ast.Block(statements=[body, ast.Expression(increment)])
-
-        if condition is None:
-            condition = ast.Literal(True)
-        body = ast.While(condition, body)
-
-        if initializer is not None:
-            body = ast.Block(statements=[initializer, body])
-
-        return body
+        return ast.ForStmt(initializer, condition, increment, body)
 
     def _while_statement(self) -> ast.Stmt:
         """Parses a while loop."""

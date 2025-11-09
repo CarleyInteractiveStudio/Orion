@@ -340,6 +340,21 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_debug_stmt(self, stmt: ast.DebugStmt):
         pass
 
+    def visit_for_stmt(self, stmt: ast.ForStmt):
+        self._begin_scope()
+        if stmt.initializer:
+            self._analyze_stmt(stmt.initializer)
+        if stmt.condition:
+            condition_type = self._analyze_expr(stmt.condition)
+            if condition_type != ANY and condition_type != BOOL:
+                type_error(self._get_token_from_expr(stmt.condition), f"For loop condition must be a boolean, but got {condition_type}.")
+                self.had_error = True
+        if stmt.increment:
+            self._analyze_expr(stmt.increment)
+
+        self._analyze_stmt(stmt.body)
+        self._end_scope()
+
     def visit_class_stmt(self, stmt: ast.Class):
         from .orion_types import ClassType, CLASS
         class_name = stmt.name.lexeme
@@ -791,7 +806,39 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         for i in range(len(expr.keys)):
             self._compile_expr(expr.keys[i]); self._compile_expr(expr.values[i])
         self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys), 0) # No token available
-    def visit_for_stmt(self, stmt: ast.Stmt): pass
+
+    def visit_for_stmt(self, stmt: ast.ForStmt):
+        self._begin_scope()
+
+        # 1. Initializer
+        if stmt.initializer:
+            self._compile_stmt(stmt.initializer)
+
+        loop_start = len(self._current_chunk().code)
+
+        # 2. Condition
+        exit_jump = -1
+        if stmt.condition:
+            self._compile_expr(stmt.condition)
+            exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, 0) # Placeholder line
+            self._emit_byte(OpCode.OP_POP, 0)
+
+        # 3. Body
+        self._compile_stmt(stmt.body)
+
+        # 4. Increment
+        if stmt.increment:
+            self._compile_expr(stmt.increment)
+            self._emit_byte(OpCode.OP_POP, 0)
+
+        self._emit_loop(loop_start, 0)
+
+        if exit_jump != -1:
+            self._patch_jump(exit_jump)
+            self._emit_byte(OpCode.OP_POP, 0)
+
+        self._end_scope()
+
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
 
     def visit_debug_stmt(self, stmt: ast.DebugStmt):

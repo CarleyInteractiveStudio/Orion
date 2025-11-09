@@ -1,0 +1,22 @@
+// tests/for_loop_test.orion
+var sum = 0;
+for (var i = 0; i < 10; i = i + 1) {
+  sum = sum + i;
+}
+print(sum); // Expected output: 45
+
+// Test with no initializer
+var j = 0;
+for (; j < 5; j = j + 1) {
+  print(j); // Expected output: 0, 1, 2, 3, 4
+}
+
+// Test with no increment
+for (var k = 0; k < 3;) {
+  print(k); // Expected output: 0, 1, 2
+  k = k + 1;
+}
+
+// Test with no condition (infinite loop with break)
+// Note: We don't have break statements yet, so we can't test this.
+// We will test it once we have break statements.
