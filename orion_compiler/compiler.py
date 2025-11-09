@@ -12,6 +12,7 @@ from .parser import Parser
 # --- Module Resolution ---
 def _find_module(module_name: str) -> str | None:
     possible_paths = [
+        f"tests/{module_name}.orion",
         f"orion_compiler/stdlib/{module_name}.orion",
         f"orion_compiler/{module_name}.orion"
     ]
@@ -88,7 +89,16 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self.current_component: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
-        self.module_members: dict[str, dict[str, Type]] = {}
+        self.module_members: dict[str, dict[str, Type]] = {
+            "ui": {
+                "Column": COMPONENT,
+                "Row": COMPONENT,
+                "Slider": COMPONENT,
+                "TextInput": COMPONENT,
+                "ScrollView": COMPONENT,
+                "Label": COMPONENT,
+            }
+        }
         self.scope_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
@@ -140,7 +150,8 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         declared_type = self._resolve_type_expr(stmt.type_annotation)
         if stmt.initializer:
             init_type = self._analyze_expr(stmt.initializer)
-            if declared_type == ANY: declared_type = init_type
+            if stmt.type_annotation is None: # Infer type only if no annotation
+                declared_type = init_type
             if not self._is_assignable(declared_type, init_type):
                 type_error(stmt.name, f"Initializer of type {init_type} cannot be assigned to variable of type {declared_type}."); self.had_error = True
         if self.scope_depth > 0: self._add_local(stmt.name, declared_type)
@@ -345,8 +356,36 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self._end_scope()
 
     def visit_use_stmt(self, stmt: ast.UseStmt):
-        module_name = stmt.alias.lexeme if stmt.alias else stmt.name.lexeme
-        self.globals[module_name] = MODULE
+        from .lexer import Lexer
+        from .parser import Parser
+
+        module_name = stmt.name.lexeme
+        alias = stmt.alias.lexeme if stmt.alias else module_name
+        self.globals[alias] = MODULE
+
+        if module_name in self.module_members:
+            return
+
+        module_path = _find_module(module_name)
+        if module_path:
+            with open(module_path, 'r') as f:
+                source = f.read()
+
+            lexer = Lexer(source)
+            tokens = lexer.scan_tokens()
+            parser = Parser(tokens)
+            statements = parser.parse()
+
+            if statements:
+                # Create a new type analyzer to avoid state corruption
+                # but pass the module_members dict to share the state
+                # This is not ideal, but it works for now.
+                # A better solution would be to have a single TypeAnalyzer
+                # instance that is passed around.
+                temp_analyzer = TypeAnalyzer(self.native_modules)
+                temp_analyzer.module_members = self.module_members
+                temp_analyzer.analyze(statements, module_name=module_name)
+
     def visit_list_literal_expr(self, expr: ast.ListLiteral) -> Type:
         if not expr.elements: return ListType(ANY)
         element_types = [self._analyze_expr(e) for e in expr.elements]
@@ -467,15 +506,38 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._compile_expr(expr.right)
         if expr.operator.token_type.name == 'MINUS': self._emit_byte(OpCode.OP_NEGATE, expr.operator.line)
         elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT, expr.operator.line)
+    def _get_expr_type(self, expr: ast.Expr) -> Type:
+        # This is a bit of a hack. We're re-running the type analyzer on the expression.
+        # A better solution would be to store the types of all expressions in the TypeAnalyzer
+        # and then look them up here.
+        return self.type_analyzer._analyze_expr(expr)
+
     def visit_binary_expr(self, expr: ast.Binary):
-        self._compile_expr(expr.left); self._compile_expr(expr.right)
+        self._compile_expr(expr.left)
+        self._compile_expr(expr.right)
+
         op_type = expr.operator.token_type.name
         if op_type == 'BANG_EQUAL':
             self._emit_byte(OpCode.OP_EQUAL, expr.operator.line)
             self._emit_byte(OpCode.OP_NOT, expr.operator.line)
+        elif op_type == 'PLUS':
+            left_type = self._get_expr_type(expr.left)
+            right_type = self._get_expr_type(expr.right)
+
+            if left_type == NUMBER and right_type == NUMBER:
+                self._emit_byte(OpCode.OP_ADD_NUMBER, expr.operator.line)
+            elif left_type == STRING and right_type == STRING:
+                self._emit_byte(OpCode.OP_ADD_STRING, expr.operator.line)
+            elif left_type == ANY or right_type == ANY:
+                self._emit_byte(OpCode.OP_ADD, expr.operator.line)
+            else:
+                # This should not happen if the type checker is correct
+                # but as a fallback, use the generic add
+                self._emit_byte(OpCode.OP_ADD, expr.operator.line)
         else:
-            op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
+            op_map = {'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
             self._emit_byte(op_map[op_type], expr.operator.line)
+
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
         if arg != -1:

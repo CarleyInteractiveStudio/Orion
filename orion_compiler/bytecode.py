@@ -23,6 +23,8 @@ class OpCode(IntEnum):
 
     # --- Binary Operations ---
     OP_ADD = 7
+    OP_ADD_NUMBER = 42
+    OP_ADD_STRING = 43
     OP_SUBTRACT = 8
     OP_MULTIPLY = 9
     OP_DIVIDE = 10

@@ -355,13 +355,15 @@ class VM:
             elif instruction == OpCode.OP_ADD:
                 b = self.pop()
                 a = self.pop()
-                if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-                    self.push(a + b)
-                elif isinstance(a, str) and isinstance(b, str):
-                    self.push(a + b)
-                else:
-                    self._runtime_error("Operands for '+' must be two numbers or two strings.")
-                    return InterpretResult.RUNTIME_ERROR, None
+                self.push(a + b)
+            elif instruction == OpCode.OP_ADD_NUMBER:
+                b = self.pop()
+                a = self.pop()
+                self.push(a + b)
+            elif instruction == OpCode.OP_ADD_STRING:
+                b = self.pop()
+                a = self.pop()
+                self.push(a + b)
             elif instruction == OpCode.OP_SUBTRACT: self._binary_op(lambda a, b: a - b)
             elif instruction == OpCode.OP_MULTIPLY: self._binary_op(lambda a, b: a * b)
             elif instruction == OpCode.OP_DIVIDE: self._binary_op(lambda a, b: a / b)

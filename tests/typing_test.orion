@@ -1,0 +1,17 @@
+// typing_test.orion
+// Este archivo contiene errores de tipo que el compilador debería detectar.
+
+// Error 1: Asignación de un tipo incorrecto en la declaración.
+var x: number = "no soy un numero";
+
+// Error 2: Asignación de un tipo incorrecto a una variable existente.
+var y: string = "hola";
+y = 123;
+
+// Error 3: Operación inválida entre tipos.
+var z = 1 + "dos";
+
+// Error 4: Condición no booleana.
+if (1) {
+    print("Esto no debería compilar.");
+}

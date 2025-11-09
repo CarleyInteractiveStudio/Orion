@@ -1,0 +1,9 @@
+import pytest
+import sys
+import os
+
+# Add the project root to the python path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+# Run pytest on the specified directories
+pytest.main(["tests/", "orion_compiler/"])
