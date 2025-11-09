@@ -85,6 +85,8 @@ class Parser:
             return self._if_statement()
         if self._match(TokenType.RETURN):
             return self._return_statement()
+        if self._match(TokenType.SWITCH):
+            return self._switch_statement()
         if self._match(TokenType.WHILE):
             return self._while_statement()
         if self._match(TokenType.LEFT_BRACE):
@@ -168,6 +170,33 @@ class Parser:
         keyword = self._previous()
         self._consume(TokenType.SEMICOLON, "Expect ';' after 'continue'.")
         return ast.ContinueStmt(keyword)
+
+    def _switch_statement(self) -> ast.Stmt:
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'switch'.")
+        expression = self._expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after switch value.")
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before switch cases.")
+
+        cases = []
+        while not self._check(TokenType.RIGHT_BRACE) and not self._is_at_end():
+            if self._match(TokenType.CASE):
+                value = self._expression()
+                self._consume(TokenType.COLON, "Expect ':' after case value.")
+                statements = []
+                while not self._check(TokenType.CASE) and not self._check(TokenType.DEFAULT) and not self._check(TokenType.RIGHT_BRACE):
+                    statements.append(self._declaration())
+                cases.append(ast.Case(value, statements))
+            elif self._match(TokenType.DEFAULT):
+                self._consume(TokenType.COLON, "Expect ':' after default.")
+                statements = []
+                while not self._check(TokenType.CASE) and not self._check(TokenType.DEFAULT) and not self._check(TokenType.RIGHT_BRACE):
+                    statements.append(self._declaration())
+                cases.append(ast.Case(None, statements))
+            else:
+                raise self._error(self._peek(), "Expect 'case' or 'default'.")
+
+        self._consume(TokenType.RIGHT_BRACE, "Expect '}' after switch cases.")
+        return ast.SwitchStmt(expression, cases)
 
     def _function(self, kind: str) -> ast.Function:
         """Parses a function declaration."""

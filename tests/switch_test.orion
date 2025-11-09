@@ -1,0 +1,45 @@
+// tests/switch_test.orion
+
+// Test basic switch
+var x = "b";
+var result = "";
+switch (x) {
+  case "a":
+    result = "is a";
+    break;
+  case "b":
+    result = "is b";
+    break;
+  default:
+    result = "is default";
+}
+print(result); // Expected output: is b
+
+// Test fall-through
+var y = 1;
+var fall_result = 0;
+switch (y) {
+  case 1:
+    fall_result = fall_result + 1;
+  case 2:
+    fall_result = fall_result + 1;
+  case 3:
+    fall_result = fall_result + 1;
+    break;
+}
+print(fall_result); // Expected output: 3
+
+// Test default case
+var z = 10;
+var default_result = "";
+switch (z) {
+  case 1:
+    default_result = "one";
+    break;
+  case 2:
+    default_result = "two";
+    break;
+  default:
+    default_result = "other";
+}
+print(default_result); // Expected output: other

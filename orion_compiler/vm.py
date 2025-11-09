@@ -382,6 +382,7 @@ class VM:
             elif instruction == OpCode.OP_FALSE: self.push(False)
             elif instruction == OpCode.OP_NIL: self.push(None)
             elif instruction == OpCode.OP_POP: self.pop()
+            elif instruction == OpCode.OP_DUP: self.push(self.peek(0))
             elif instruction == OpCode.OP_DEFINE_GLOBAL:
                 name = read_constant()
                 self.globals[name] = self.peek(0)

@@ -41,10 +41,12 @@ class TokenType(Enum):
     AS = auto()
     BOOL = auto()
     BREAK = auto()
+    CASE = auto()
     CLASS = auto()
     COMPONENT = auto()
     CONTINUE = auto()
     CONST = auto()
+    DEFAULT = auto()
     DEBUG = auto()
     ELSE = auto()
     FALSE = auto()
@@ -92,10 +94,12 @@ keywords = {
     "as": TokenType.AS,
     "bool": TokenType.BOOL,
     "break": TokenType.BREAK,
+    "case": TokenType.CASE,
     "class": TokenType.CLASS,
     "component": TokenType.COMPONENT,
     "continue": TokenType.CONTINUE,
     "const": TokenType.CONST,
+    "default": TokenType.DEFAULT,
     "debug": TokenType.DEBUG,
     "else": TokenType.ELSE,
     "false": TokenType.FALSE,

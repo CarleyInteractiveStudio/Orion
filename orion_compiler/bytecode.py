@@ -16,6 +16,7 @@ class OpCode(IntEnum):
 
     # --- Stack Operations ---
     OP_POP = 4
+    OP_DUP = 51
 
     # --- Unary Operations ---
     OP_NEGATE = 5

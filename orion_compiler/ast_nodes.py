@@ -150,6 +150,10 @@ class StmtVisitor(ABC):
     def visit_continue_stmt(self, stmt: 'ContinueStmt'):
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_switch_stmt(self, stmt: 'SwitchStmt'):
+        raise NotImplementedError
+
 
 # --- Abstract Base Classes for AST Nodes ---
 
@@ -484,3 +488,18 @@ class ContinueStmt(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_continue_stmt(self)
+
+
+@dataclass
+class Case:
+    value: Optional[Expr]  # None for default case
+    statements: List[Stmt]
+
+
+@dataclass
+class SwitchStmt(Stmt):
+    expression: Expr
+    cases: List[Case]
+
+    def accept(self, visitor: StmtVisitor):
+        return visitor.visit_switch_stmt(self)

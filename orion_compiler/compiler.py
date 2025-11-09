@@ -101,6 +101,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         }
         self.scope_depth: int = 0
         self.loop_depth: int = 0
+        self.switch_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
 
@@ -202,8 +203,8 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self.loop_depth -= 1
 
     def visit_break_stmt(self, stmt: ast.BreakStmt):
-        if self.loop_depth == 0:
-            type_error(stmt.keyword, "Cannot use 'break' outside of a loop.")
+        if self.loop_depth == 0 and self.switch_depth == 0:
+            type_error(stmt.keyword, "Cannot use 'break' outside of a loop or switch statement.")
             self.had_error = True
 
     def visit_continue_stmt(self, stmt: ast.ContinueStmt):
@@ -370,6 +371,21 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self._analyze_stmt(stmt.body)
         self.loop_depth -= 1
         self._end_scope()
+
+    def visit_switch_stmt(self, stmt: ast.SwitchStmt):
+        self.switch_depth += 1
+        expression_type = self._analyze_expr(stmt.expression)
+        for case in stmt.cases:
+            if case.value:
+                case_type = self._analyze_expr(case.value)
+                if not self._is_assignable(expression_type, case_type):
+                    # This should be a type error, but for now we'll just print a message
+                    # A more robust implementation would use the token from the case value
+                    print(f"Type Error: Case value of type {case_type} is not comparable to switch expression of type {expression_type}.")
+                    self.had_error = True
+            for statement in case.statements:
+                self._analyze_stmt(statement)
+        self.switch_depth -= 1
 
     def visit_class_stmt(self, stmt: ast.Class):
         from .orion_types import ClassType, CLASS
@@ -880,14 +896,15 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._end_scope()
 
     def visit_break_stmt(self, stmt: ast.BreakStmt):
-        if not hasattr(self, 'loop_jumps') or not self.loop_jumps:
-            # This should be caught by the TypeAnalyzer, but as a safeguard:
+        if hasattr(self, 'switch_jumps') and self.switch_jumps:
+            jump = self._emit_jump(OpCode.OP_JUMP, stmt.keyword.line)
+            self.switch_jumps[-1].append(jump)
+        elif hasattr(self, 'loop_jumps') and self.loop_jumps:
+            jump = self._emit_jump(OpCode.OP_JUMP, stmt.keyword.line)
+            self.loop_jumps[-1]['exit'].append(jump)
+        else:
             self.had_error = True
-            print(f"Compile Error at line {stmt.keyword.line}: 'break' outside loop.")
-            return
-
-        jump = self._emit_jump(OpCode.OP_JUMP, stmt.keyword.line)
-        self.loop_jumps[-1]['exit'].append(jump)
+            print(f"Compile Error at line {stmt.keyword.line}: 'break' outside loop or switch.")
 
     def visit_continue_stmt(self, stmt: ast.ContinueStmt):
         if not hasattr(self, 'loop_jumps') or not self.loop_jumps:
@@ -897,6 +914,49 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
 
         loop = self.loop_jumps[-1]
         self._emit_loop(loop['start'], stmt.keyword.line)
+
+    def visit_switch_stmt(self, stmt: ast.SwitchStmt):
+        self._compile_expr(stmt.expression)
+
+        if not hasattr(self, 'switch_jumps'):
+            self.switch_jumps = []
+        self.switch_jumps.append([])
+
+        case_end_jumps = []
+        next_case_jumps = []
+        default_case_body = None
+
+        for case in stmt.cases:
+            if case.value:
+                for jump in next_case_jumps:
+                    self._patch_jump(jump)
+                next_case_jumps = []
+
+                self._emit_byte(OpCode.OP_DUP, 0)
+                self._compile_expr(case.value)
+                self._emit_byte(OpCode.OP_EQUAL, 0)
+
+                jump_if_false = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, 0)
+                self._emit_byte(OpCode.OP_POP, 0)
+
+                for statement in case.statements:
+                    self._compile_stmt(statement)
+
+                next_case_jumps.append(jump_if_false)
+            else:
+                default_case_body = case.statements
+
+        for jump in next_case_jumps:
+            self._patch_jump(jump)
+
+        if default_case_body:
+            for statement in default_case_body:
+                self._compile_stmt(statement)
+
+        self._emit_byte(OpCode.OP_POP, 0)
+
+        for jump in self.switch_jumps.pop():
+            self._patch_jump(jump)
 
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
 
