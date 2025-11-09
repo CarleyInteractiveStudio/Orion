@@ -503,6 +503,18 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_literal_expr(self, expr: ast.Literal): self._emit_constant(expr.value, 0) # No token available
     def visit_grouping_expr(self, expr: ast.Grouping): self._compile_expr(expr.expression)
     def visit_unary_expr(self, expr: ast.Unary):
+        # --- Constant Folding ---
+        if isinstance(expr.right, ast.Literal):
+            op_type = expr.operator.token_type.name
+            value = expr.right.value
+            result = None
+            if op_type == 'MINUS': result = -value
+            elif op_type == 'BANG': result = not value
+
+            if result is not None:
+                self._emit_constant(result, expr.operator.line)
+                return
+
         self._compile_expr(expr.right)
         op_type = expr.operator.token_type.name
         right_type = self._get_expr_type(expr.right)
@@ -522,6 +534,26 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         return self.type_analyzer._analyze_expr(expr)
 
     def visit_binary_expr(self, expr: ast.Binary):
+        # --- Constant Folding ---
+        if isinstance(expr.left, ast.Literal) and isinstance(expr.right, ast.Literal):
+            left_val = expr.left.value
+            right_val = expr.right.value
+            op_type = expr.operator.token_type.name
+
+            result = None
+            if op_type == 'PLUS': result = left_val + right_val
+            elif op_type == 'MINUS': result = left_val - right_val
+            elif op_type == 'STAR': result = left_val * right_val
+            elif op_type == 'SLASH': result = left_val / right_val
+            elif op_type == 'GREATER': result = left_val > right_val
+            elif op_type == 'LESS': result = left_val < right_val
+            elif op_type == 'EQUAL_EQUAL': result = left_val == right_val
+            elif op_type == 'BANG_EQUAL': result = left_val != right_val
+
+            if result is not None:
+                self._emit_constant(result, expr.operator.line)
+                return
+
         self._compile_expr(expr.left)
         self._compile_expr(expr.right)
 
