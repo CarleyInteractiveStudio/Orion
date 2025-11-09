@@ -64,3 +64,8 @@ def test_number_equality_bytecode():
     bytecode = compile_and_get_bytecode("var a: number = 2; var b: number = 2; var c = a == b;")
     assert OpCode.OP_EQUAL_NUMBER in bytecode
     assert OpCode.OP_EQUAL not in bytecode
+
+def test_number_negation_bytecode():
+    bytecode = compile_and_get_bytecode("var a: number = 1; var b = -a;")
+    assert OpCode.OP_NEGATE_NUMBER in bytecode
+    assert OpCode.OP_NEGATE not in bytecode

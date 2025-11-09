@@ -19,6 +19,7 @@ class OpCode(IntEnum):
 
     # --- Unary Operations ---
     OP_NEGATE = 5
+    OP_NEGATE_NUMBER = 50
     OP_NOT = 6
 
     # --- Binary Operations ---

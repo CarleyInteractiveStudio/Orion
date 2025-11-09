@@ -352,6 +352,7 @@ class VM:
                 frame = self.frames[-1]
             elif instruction == OpCode.OP_CONSTANT: self.push(read_constant())
             elif instruction == OpCode.OP_NEGATE: self.push(-self.pop())
+            elif instruction == OpCode.OP_NEGATE_NUMBER: self.push(-self.pop())
             elif instruction == OpCode.OP_ADD:
                 b = self.pop()
                 a = self.pop()

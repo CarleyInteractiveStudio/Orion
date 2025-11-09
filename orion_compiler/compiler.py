@@ -504,8 +504,17 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_grouping_expr(self, expr: ast.Grouping): self._compile_expr(expr.expression)
     def visit_unary_expr(self, expr: ast.Unary):
         self._compile_expr(expr.right)
-        if expr.operator.token_type.name == 'MINUS': self._emit_byte(OpCode.OP_NEGATE, expr.operator.line)
-        elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT, expr.operator.line)
+        op_type = expr.operator.token_type.name
+        right_type = self._get_expr_type(expr.right)
+
+        if op_type == 'MINUS':
+            if right_type == NUMBER:
+                self._emit_byte(OpCode.OP_NEGATE_NUMBER, expr.operator.line)
+            else:
+                self._emit_byte(OpCode.OP_NEGATE, expr.operator.line)
+        elif op_type == 'BANG':
+            self._emit_byte(OpCode.OP_NOT, expr.operator.line)
+
     def _get_expr_type(self, expr: ast.Expr) -> Type:
         # This is a bit of a hack. We're re-running the type analyzer on the expression.
         # A better solution would be to store the types of all expressions in the TypeAnalyzer
