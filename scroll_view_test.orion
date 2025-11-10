@@ -1,0 +1,41 @@
+use ui;
+use scroll;
+
+var items = [
+    Label({ text: "Item 0" }),
+    Label({ text: "Item 1" }),
+    Label({ text: "Item 2" }),
+    Label({ text: "Item 3" }),
+    Label({ text: "Item 4" }),
+    Label({ text: "Item 5" }),
+    Label({ text: "Item 6" }),
+    Label({ text: "Item 7" }),
+    Label({ text: "Item 8" }),
+    Label({ text: "Item 9" }),
+    Label({ text: "Item 10" }),
+    Label({ text: "Item 11" }),
+    Label({ text: "Item 12" }),
+    Label({ text: "Item 13" }),
+    Label({ text: "Item 14" }),
+    Label({ text: "Item 15" }),
+    Label({ text: "Item 16" }),
+    Label({ text: "Item 17" }),
+    Label({ text: "Item 18" }),
+    Label({ text: "Item 19" })
+];
+
+var column = Column({ children: items });
+var scrollView = ScrollView({
+    x: 50,
+    y: 50,
+    width: 200,
+    height: 150,
+    contentHeight: 400,
+    child: column
+});
+
+component App {
+    render() {
+        scrollView.render();
+    }
+}

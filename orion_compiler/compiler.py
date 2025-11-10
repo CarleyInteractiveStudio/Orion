@@ -4,7 +4,7 @@ from . import ast_nodes as ast
 from .bytecode import Chunk, OpCode
 from .tokens import Token, TokenType
 from .objects import OrionCompiledFunction, OrionComponentDef
-from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT, ComponentType
+from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT, ComponentType, FunctionType
 from .errors import type_error
 from .lexer import Lexer
 from .parser import Parser
@@ -12,7 +12,6 @@ from .parser import Parser
 # --- Module Resolution ---
 def _find_module(module_name: str) -> str | None:
     possible_paths = [
-        f"tests/{module_name}.orion",
         f"orion_compiler/stdlib/{module_name}.orion",
         f"orion_compiler/{module_name}.orion"
     ]
@@ -22,7 +21,7 @@ def _find_module(module_name: str) -> str | None:
     return None
 
 # --- Top-Level Compile Function ---
-def compile(source: str, type_analyzer: 'TypeAnalyzer' = None, module_name: str = "<script>") -> OrionCompiledFunction | None:
+def compile(source: str, type_analyzer: 'TypeAnalyzer' = None) -> OrionCompiledFunction | None:
     from .vm import VM
     if type_analyzer is None:
         temp_vm = VM()
@@ -31,7 +30,7 @@ def compile(source: str, type_analyzer: 'TypeAnalyzer' = None, module_name: str 
 
     module_cache = {}
     try:
-        main_function = _compile_module_source(source, module_name, type_analyzer, module_cache)
+        main_function = _compile_module_source(source, "<script>", type_analyzer, module_cache)
         return main_function
     except Exception as e:
         print(f"FATAL: An unexpected error occurred during compilation: {e}")
@@ -52,7 +51,7 @@ def _compile_module_source(source: str, module_name: str, type_analyzer: 'TypeAn
         return None
     print(f"DEBUG: Parser finished for module '{module_name}'.")
 
-    type_analyzer.analyze(statements, module_name=module_name)
+    type_analyzer.analyze(statements)
     if type_analyzer.had_error:
         print(f"DEBUG: TypeAnalyzer failed for module '{module_name}'.")
         return None
@@ -85,75 +84,26 @@ class Upvalue:
 class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
-        self.globals: dict[str, Type] = { "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL, "Column": COMPONENT, "Row": COMPONENT }
+        self.globals: dict[str, Type] = {
+            "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL,
+            "Column": COMPONENT, "Row": COMPONENT, "Label": COMPONENT, "Slider": COMPONENT, "ScrollView": COMPONENT
+        }
         self.current_component: Optional[Type] = None
+        self.current_function_return_type: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
-        self.module_members: dict[str, dict[str, Type]] = {
-            "ui": {
-                "Column": COMPONENT,
-                "Row": COMPONENT,
-                "Slider": COMPONENT,
-                "TextInput": COMPONENT,
-                "ScrollView": COMPONENT,
-                "Label": COMPONENT,
-            }
-        }
         self.scope_depth: int = 0
-        self.loop_depth: int = 0
-        self.switch_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
-
-    def analyze(self, statements: list[ast.Stmt], module_name: str = "<script>"):
-        self.current_module_name = module_name
-        if module_name not in self.module_members:
-            self.module_members[module_name] = {}
-
-        # First pass: register all top-level names
-        for stmt in statements:
-            if isinstance(stmt, ast.ComponentStmt):
-                self._register_component(stmt)
-            elif isinstance(stmt, ast.Class):
-                self._register_class(stmt)
-            elif isinstance(stmt, ast.Function):
-                if self.current_module_name != '<script>':
-                    self.module_members[self.current_module_name][stmt.name.lexeme] = FUNCTION
-                else:
-                    self.globals[stmt.name.lexeme] = FUNCTION
-
-        # Second pass: analyze bodies
-        for stmt in statements:
-            self._analyze_stmt(stmt)
-
-    def _register_component(self, stmt: ast.ComponentStmt):
-        from .orion_types import ComponentType, TYPE
-        component_name = stmt.name.lexeme
-        new_component_type = ComponentType(component_name)
-        self.type_map[component_name] = new_component_type
-        if self.current_module_name != '<script>':
-            self.module_members[self.current_module_name][component_name] = TYPE
-        else:
-            self.globals[component_name] = TYPE
-
-    def _register_class(self, stmt: ast.Class):
-        from .orion_types import ClassType, CLASS
-        class_name = stmt.name.lexeme
-        new_class_type = ClassType(class_name)
-        self.type_map[class_name] = new_class_type
-        if self.current_module_name != '<script>':
-            self.module_members[self.current_module_name][class_name] = CLASS
-        else:
-            self.globals[class_name] = CLASS
-
+    def analyze(self, statements: list[ast.Stmt]):
+        for stmt in statements: self._analyze_stmt(stmt)
     def _analyze_stmt(self, stmt: ast.Stmt): stmt.accept(self)
     def _analyze_expr(self, expr: ast.Expr) -> Type: return expr.accept(self)
     def visit_var_stmt(self, stmt: ast.Var):
         declared_type = self._resolve_type_expr(stmt.type_annotation)
         if stmt.initializer:
             init_type = self._analyze_expr(stmt.initializer)
-            if stmt.type_annotation is None: # Infer type only if no annotation
-                declared_type = init_type
+            if declared_type == ANY: declared_type = init_type
             if not self._is_assignable(declared_type, init_type):
                 type_error(stmt.name, f"Initializer of type {init_type} cannot be assigned to variable of type {declared_type}."); self.had_error = True
         if self.scope_depth > 0: self._add_local(stmt.name, declared_type)
@@ -195,23 +145,10 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self._analyze_stmt(stmt.then_branch)
         if stmt.else_branch: self._analyze_stmt(stmt.else_branch)
     def visit_while_stmt(self, stmt: ast.While):
-        self.loop_depth += 1
         condition_type = self._analyze_expr(stmt.condition)
         if condition_type != ANY and condition_type != BOOL:
             type_error(self._get_token_from_expr(stmt.condition), f"While condition must be a boolean, but got {condition_type}."); self.had_error = True
         self._analyze_stmt(stmt.body)
-        self.loop_depth -= 1
-
-    def visit_break_stmt(self, stmt: ast.BreakStmt):
-        if self.loop_depth == 0 and self.switch_depth == 0:
-            type_error(stmt.keyword, "Cannot use 'break' outside of a loop or switch statement.")
-            self.had_error = True
-
-    def visit_continue_stmt(self, stmt: ast.ContinueStmt):
-        if self.loop_depth == 0:
-            type_error(stmt.keyword, "Cannot use 'continue' outside of a loop.")
-            self.had_error = True
-
     def visit_block_stmt(self, stmt: ast.Block):
         self._begin_scope(); self.analyze(stmt.statements); self._end_scope()
     def visit_expression_stmt(self, stmt: ast.Expression): self._analyze_expr(stmt.expression)
@@ -263,22 +200,71 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             return self._is_assignable(target.key_type, value.key_type) and self._is_assignable(target.value_type, value.value_type)
         return False
     def visit_function_stmt(self, stmt: ast.Function):
-        if self.scope_depth > 0: self._add_local(stmt.name, FUNCTION)
-        else: self.globals[stmt.name.lexeme] = FUNCTION
+        return_type = self._resolve_type_expr(stmt.return_type) if stmt.return_type else NIL
+        param_types = [self._resolve_type_expr(p.type_annotation) for p in stmt.params]
+        func_type = FunctionType(param_types, return_type)
+
+        if self.scope_depth > 0: self._add_local(stmt.name, func_type)
+        else: self.globals[stmt.name.lexeme] = func_type
+
+        enclosing_function_return_type = self.current_function_return_type
+        self.current_function_return_type = return_type
+
         self._begin_scope()
-        for param in stmt.params: self._add_local(param.name, ANY)
+        for i, param in enumerate(stmt.params):
+            self._add_local(param.name, param_types[i])
         self.analyze(stmt.body)
         self._end_scope()
+
+        self.current_function_return_type = enclosing_function_return_type
     def visit_return_stmt(self, stmt: ast.Return):
-        if stmt.value: self._analyze_expr(stmt.value)
+        expected_type = self.current_function_return_type
+
+        # This case handles returns outside of any function (e.g., top-level script code)
+        if expected_type is None:
+            if stmt.value:
+                type_error(stmt.keyword, "Cannot return a value from top-level code.")
+                self.had_error = True
+            return
+
+        if stmt.value:
+            actual_type = self._analyze_expr(stmt.value)
+            if expected_type == NIL:
+                type_error(stmt.keyword, "Cannot return a value from a function with no return type (void).")
+                self.had_error = True
+            elif not self._is_assignable(expected_type, actual_type):
+                type_error(stmt.keyword, f"Cannot return value of type {actual_type} from a function declared to return {expected_type}.")
+                self.had_error = True
+        else:  # No return value
+            if expected_type != NIL:
+                type_error(stmt.keyword, f"Must return a value of type {expected_type} from this function.")
+                self.had_error = True
     def visit_call_expr(self, expr: ast.Call) -> Type:
-        from .orion_types import ComponentType, TYPE
         callee_type = self._analyze_expr(expr.callee)
-        if callee_type == TYPE and isinstance(expr.callee, ast.Variable):
-            component_name = expr.callee.name.lexeme
-            if component_name in self.type_map and isinstance(self.type_map[component_name], ComponentType): return self.type_map[component_name]
-        if callee_type == FUNCTION: return ANY
-        return ANY
+
+        if callee_type == ANY:
+            for arg in expr.arguments: self._analyze_expr(arg)
+            return ANY
+
+        if not isinstance(callee_type, FunctionType):
+            type_error(self._get_token_from_expr(expr.callee), f"Type {callee_type} is not callable.")
+            self.had_error = True
+            return ANY
+
+        if len(expr.arguments) != len(callee_type.param_types):
+            type_error(expr.paren, f"Expected {len(callee_type.param_types)} arguments but got {len(expr.arguments)}.")
+            self.had_error = True
+            # Return the expected return type anyway to avoid cascading errors
+            return callee_type.return_type
+
+        for i, arg in enumerate(expr.arguments):
+            arg_type = self._analyze_expr(arg)
+            param_type = callee_type.param_types[i]
+            if not self._is_assignable(param_type, arg_type):
+                type_error(self._get_token_from_expr(arg), f"Argument {i+1} has wrong type. Expected {param_type}, but got {arg_type}.")
+                self.had_error = True
+
+        return callee_type.return_type
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
     def visit_get_expr(self, expr: ast.Get) -> Type:
         object_type = self._analyze_expr(expr.object)
@@ -296,9 +282,7 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             module_name = expr.object.name.lexeme
             member_name = expr.name.lexeme
             if module_name in self.native_modules and member_name in self.native_modules[module_name]:
-                return self.native_modules[module_name][member_name]
-            if module_name in self.module_members and member_name in self.module_members[module_name]:
-                return self.module_members[module_name][member_name]
+                return self.native_modules[module_name][member_name] # Should be FUNCTION
             type_error(expr.name, f"Module '{module_name}' has no member named '{member_name}'."); self.had_error = True; return ANY
 
         if object_type == ANY: return ANY
@@ -355,38 +339,6 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def visit_debug_stmt(self, stmt: ast.DebugStmt):
         pass
 
-    def visit_for_stmt(self, stmt: ast.ForStmt):
-        self._begin_scope()
-        self.loop_depth += 1
-        if stmt.initializer:
-            self._analyze_stmt(stmt.initializer)
-        if stmt.condition:
-            condition_type = self._analyze_expr(stmt.condition)
-            if condition_type != ANY and condition_type != BOOL:
-                type_error(self._get_token_from_expr(stmt.condition), f"For loop condition must be a boolean, but got {condition_type}.")
-                self.had_error = True
-        if stmt.increment:
-            self._analyze_expr(stmt.increment)
-
-        self._analyze_stmt(stmt.body)
-        self.loop_depth -= 1
-        self._end_scope()
-
-    def visit_switch_stmt(self, stmt: ast.SwitchStmt):
-        self.switch_depth += 1
-        expression_type = self._analyze_expr(stmt.expression)
-        for case in stmt.cases:
-            if case.value:
-                case_type = self._analyze_expr(case.value)
-                if not self._is_assignable(expression_type, case_type):
-                    # This should be a type error, but for now we'll just print a message
-                    # A more robust implementation would use the token from the case value
-                    print(f"Type Error: Case value of type {case_type} is not comparable to switch expression of type {expression_type}.")
-                    self.had_error = True
-            for statement in case.statements:
-                self._analyze_stmt(statement)
-        self.switch_depth -= 1
-
     def visit_class_stmt(self, stmt: ast.Class):
         from .orion_types import ClassType, CLASS
         class_name = stmt.name.lexeme
@@ -403,36 +355,8 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         self._end_scope()
 
     def visit_use_stmt(self, stmt: ast.UseStmt):
-        from .lexer import Lexer
-        from .parser import Parser
-
-        module_name = stmt.name.lexeme
-        alias = stmt.alias.lexeme if stmt.alias else module_name
-        self.globals[alias] = MODULE
-
-        if module_name in self.module_members:
-            return
-
-        module_path = _find_module(module_name)
-        if module_path:
-            with open(module_path, 'r') as f:
-                source = f.read()
-
-            lexer = Lexer(source)
-            tokens = lexer.scan_tokens()
-            parser = Parser(tokens)
-            statements = parser.parse()
-
-            if statements:
-                # Create a new type analyzer to avoid state corruption
-                # but pass the module_members dict to share the state
-                # This is not ideal, but it works for now.
-                # A better solution would be to have a single TypeAnalyzer
-                # instance that is passed around.
-                temp_analyzer = TypeAnalyzer(self.native_modules)
-                temp_analyzer.module_members = self.module_members
-                temp_analyzer.analyze(statements, module_name=module_name)
-
+        module_name = stmt.alias.lexeme if stmt.alias else stmt.name.lexeme
+        self.globals[module_name] = MODULE
     def visit_list_literal_expr(self, expr: ast.ListLiteral) -> Type:
         if not expr.elements: return ListType(ANY)
         element_types = [self._analyze_expr(e) for e in expr.elements]
@@ -550,92 +474,18 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_literal_expr(self, expr: ast.Literal): self._emit_constant(expr.value, 0) # No token available
     def visit_grouping_expr(self, expr: ast.Grouping): self._compile_expr(expr.expression)
     def visit_unary_expr(self, expr: ast.Unary):
-        # --- Constant Folding ---
-        if isinstance(expr.right, ast.Literal):
-            op_type = expr.operator.token_type.name
-            value = expr.right.value
-            result = None
-            if op_type == 'MINUS': result = -value
-            elif op_type == 'BANG': result = not value
-
-            if result is not None:
-                self._emit_constant(result, expr.operator.line)
-                return
-
         self._compile_expr(expr.right)
-        op_type = expr.operator.token_type.name
-        right_type = self._get_expr_type(expr.right)
-
-        if op_type == 'MINUS':
-            if right_type == NUMBER:
-                self._emit_byte(OpCode.OP_NEGATE_NUMBER, expr.operator.line)
-            else:
-                self._emit_byte(OpCode.OP_NEGATE, expr.operator.line)
-        elif op_type == 'BANG':
-            self._emit_byte(OpCode.OP_NOT, expr.operator.line)
-
-    def _get_expr_type(self, expr: ast.Expr) -> Type:
-        # This is a bit of a hack. We're re-running the type analyzer on the expression.
-        # A better solution would be to store the types of all expressions in the TypeAnalyzer
-        # and then look them up here.
-        return self.type_analyzer._analyze_expr(expr)
-
+        if expr.operator.token_type.name == 'MINUS': self._emit_byte(OpCode.OP_NEGATE, expr.operator.line)
+        elif expr.operator.token_type.name == 'BANG': self._emit_byte(OpCode.OP_NOT, expr.operator.line)
     def visit_binary_expr(self, expr: ast.Binary):
-        # --- Constant Folding ---
-        if isinstance(expr.left, ast.Literal) and isinstance(expr.right, ast.Literal):
-            left_val = expr.left.value
-            right_val = expr.right.value
-            op_type = expr.operator.token_type.name
-
-            result = None
-            if op_type == 'PLUS': result = left_val + right_val
-            elif op_type == 'MINUS': result = left_val - right_val
-            elif op_type == 'STAR': result = left_val * right_val
-            elif op_type == 'SLASH': result = left_val / right_val
-            elif op_type == 'GREATER': result = left_val > right_val
-            elif op_type == 'LESS': result = left_val < right_val
-            elif op_type == 'EQUAL_EQUAL': result = left_val == right_val
-            elif op_type == 'BANG_EQUAL': result = left_val != right_val
-
-            if result is not None:
-                self._emit_constant(result, expr.operator.line)
-                return
-
-        self._compile_expr(expr.left)
-        self._compile_expr(expr.right)
-
+        self._compile_expr(expr.left); self._compile_expr(expr.right)
         op_type = expr.operator.token_type.name
-        left_type = self._get_expr_type(expr.left)
-        right_type = self._get_expr_type(expr.right)
-
-        if left_type == NUMBER and right_type == NUMBER:
-            if op_type == 'PLUS': self._emit_byte(OpCode.OP_ADD_NUMBER, expr.operator.line)
-            elif op_type == 'MINUS': self._emit_byte(OpCode.OP_SUBTRACT_NUMBER, expr.operator.line)
-            elif op_type == 'STAR': self._emit_byte(OpCode.OP_MULTIPLY_NUMBER, expr.operator.line)
-            elif op_type == 'SLASH': self._emit_byte(OpCode.OP_DIVIDE_NUMBER, expr.operator.line)
-            elif op_type == 'GREATER': self._emit_byte(OpCode.OP_GREATER_NUMBER, expr.operator.line)
-            elif op_type == 'LESS': self._emit_byte(OpCode.OP_LESS_NUMBER, expr.operator.line)
-            elif op_type == 'EQUAL_EQUAL': self._emit_byte(OpCode.OP_EQUAL_NUMBER, expr.operator.line)
-            elif op_type == 'BANG_EQUAL':
-                self._emit_byte(OpCode.OP_EQUAL_NUMBER, expr.operator.line)
-                self._emit_byte(OpCode.OP_NOT, expr.operator.line)
-            else:
-                # Fallback for other ops if needed
-                op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
-                if op_type in op_map:
-                    self._emit_byte(op_map[op_type], expr.operator.line)
-        elif op_type == 'PLUS' and left_type == STRING and right_type == STRING:
-            self._emit_byte(OpCode.OP_ADD_STRING, expr.operator.line)
+        if op_type == 'BANG_EQUAL':
+            self._emit_byte(OpCode.OP_EQUAL, expr.operator.line)
+            self._emit_byte(OpCode.OP_NOT, expr.operator.line)
         else:
-            # Generic operators for ANY type or other type combinations
-            if op_type == 'BANG_EQUAL':
-                self._emit_byte(OpCode.OP_EQUAL, expr.operator.line)
-                self._emit_byte(OpCode.OP_NOT, expr.operator.line)
-            else:
-                op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
-                if op_type in op_map:
-                    self._emit_byte(op_map[op_type], expr.operator.line)
-
+            op_map = {'PLUS': OpCode.OP_ADD, 'MINUS': OpCode.OP_SUBTRACT, 'STAR': OpCode.OP_MULTIPLY, 'SLASH': OpCode.OP_DIVIDE, 'EQUAL_EQUAL': OpCode.OP_EQUAL, 'GREATER': OpCode.OP_GREATER, 'LESS': OpCode.OP_LESS}
+            self._emit_byte(op_map[op_type], expr.operator.line)
     def visit_variable_expr(self, expr: ast.Variable):
         arg = self._resolve_local(expr.name)
         if arg != -1:
@@ -676,28 +526,11 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         self._patch_jump(else_jump)
     def visit_while_stmt(self, stmt: ast.While):
         loop_start = len(self._current_chunk().code)
-
         self._compile_expr(stmt.condition)
         line = self._get_token_from_expr(stmt.condition).line
         exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, line)
-        self._emit_byte(OpCode.OP_POP, line)
-
-        # Store the loop context
-        if not hasattr(self, 'loop_jumps'):
-            self.loop_jumps = []
-        self.loop_jumps.append({'exit': [], 'start': loop_start})
-
-        self._compile_stmt(stmt.body)
-
-        self._emit_loop(loop_start, line)
-        self._patch_jump(exit_jump)
-        self._emit_byte(OpCode.OP_POP, line)
-
-        # Patch break statements
-        loop = self.loop_jumps.pop()
-        for jump in loop['exit']:
-            self._patch_jump(jump)
-
+        self._emit_byte(OpCode.OP_POP, line); self._compile_stmt(stmt.body)
+        self._emit_loop(loop_start, line); self._patch_jump(exit_jump); self._emit_byte(OpCode.OP_POP, line)
     def visit_function_stmt(self, stmt: ast.Function):
         compiler = Compiler(self, stmt, "function", self.type_analyzer, self.module_cache)
         function_obj = compiler._end_compiler()
@@ -783,12 +616,6 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         if jump > 0xffff: self.had_error = True; print("Too much code to jump over.")
         self._current_chunk().code[offset] = (jump >> 8) & 0xff
         self._current_chunk().code[offset + 1] = jump & 0xff
-    def _get_token_from_expr(self, expr: ast.Expr) -> Token:
-        if isinstance(expr, (ast.Binary, ast.Unary)): return expr.operator
-        if isinstance(expr, ast.Variable): return expr.name
-        if isinstance(expr, ast.Literal): return Token(None, str(expr.value), None, 0)
-        if isinstance(expr, (ast.GetSubscript, ast.SetSubscript)): return expr.bracket
-        return Token(None, "expression", None, 0)
     def visit_logical_expr(self, expr: ast.Logical): pass
     def visit_get_expr(self, expr: ast.Get):
         self._compile_expr(expr.object)
@@ -832,16 +659,9 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
     def visit_state_block_stmt(self, stmt: ast.StateBlock): pass
     def visit_module_stmt(self, stmt: ast.ModuleStmt): pass
     def visit_use_stmt(self, stmt: ast.UseStmt):
-        module_name = stmt.name.lexeme
-        alias = stmt.alias.lexeme if stmt.alias else module_name
-
-        is_native = module_name in self.type_analyzer.native_modules
-        if is_native:
-            self._emit_opcode_and_constant_index(OpCode.OP_IMPORT_NATIVE, module_name, stmt.name.line)
-        else:
-            self._emit_opcode_and_constant_index(OpCode.OP_IMPORT_MODULE, module_name, stmt.name.line)
-
-        self._emit_opcode_and_constant_index(OpCode.OP_DEFINE_GLOBAL, alias, stmt.name.line)
+        # The dependency resolver in orion.py handles loading modules.
+        # This statement is just for dependency analysis.
+        pass
     def visit_list_literal_expr(self, expr: ast.ListLiteral):
         for element in expr.elements: self._compile_expr(element)
         self._emit_bytes(OpCode.OP_BUILD_LIST, len(expr.elements), 0) # No token available
@@ -855,109 +675,7 @@ class Compiler(ast.ExprVisitor, ast.StmtVisitor):
         for i in range(len(expr.keys)):
             self._compile_expr(expr.keys[i]); self._compile_expr(expr.values[i])
         self._emit_bytes(OpCode.OP_BUILD_DICT, len(expr.keys), 0) # No token available
-
-    def visit_for_stmt(self, stmt: ast.ForStmt):
-        self._begin_scope()
-
-        if stmt.initializer:
-            self._compile_stmt(stmt.initializer)
-
-        loop_start = len(self._current_chunk().code)
-
-        exit_jump = -1
-        if stmt.condition:
-            self._compile_expr(stmt.condition)
-            exit_jump = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, 0)
-            self._emit_byte(OpCode.OP_POP, 0)
-
-        if not hasattr(self, 'loop_jumps'):
-            self.loop_jumps = []
-
-        increment_start = len(self._current_chunk().code)
-        if stmt.increment:
-            # The body will jump here for 'continue'
-            self._compile_expr(stmt.increment)
-            self._emit_byte(OpCode.OP_POP, 0)
-
-        self.loop_jumps.append({'exit': [], 'start': increment_start})
-
-        self._compile_stmt(stmt.body)
-
-        self._emit_loop(loop_start, 0)
-
-        if exit_jump != -1:
-            self._patch_jump(exit_jump)
-            self._emit_byte(OpCode.OP_POP, 0)
-
-        loop = self.loop_jumps.pop()
-        for jump in loop['exit']:
-            self._patch_jump(jump)
-
-        self._end_scope()
-
-    def visit_break_stmt(self, stmt: ast.BreakStmt):
-        if hasattr(self, 'switch_jumps') and self.switch_jumps:
-            jump = self._emit_jump(OpCode.OP_JUMP, stmt.keyword.line)
-            self.switch_jumps[-1].append(jump)
-        elif hasattr(self, 'loop_jumps') and self.loop_jumps:
-            jump = self._emit_jump(OpCode.OP_JUMP, stmt.keyword.line)
-            self.loop_jumps[-1]['exit'].append(jump)
-        else:
-            self.had_error = True
-            print(f"Compile Error at line {stmt.keyword.line}: 'break' outside loop or switch.")
-
-    def visit_continue_stmt(self, stmt: ast.ContinueStmt):
-        if not hasattr(self, 'loop_jumps') or not self.loop_jumps:
-            self.had_error = True
-            print(f"Compile Error at line {stmt.keyword.line}: 'continue' outside loop.")
-            return
-
-        loop = self.loop_jumps[-1]
-        self._emit_loop(loop['start'], stmt.keyword.line)
-
-    def visit_switch_stmt(self, stmt: ast.SwitchStmt):
-        self._compile_expr(stmt.expression)
-
-        if not hasattr(self, 'switch_jumps'):
-            self.switch_jumps = []
-        self.switch_jumps.append([])
-
-        case_end_jumps = []
-        next_case_jumps = []
-        default_case_body = None
-
-        for case in stmt.cases:
-            if case.value:
-                for jump in next_case_jumps:
-                    self._patch_jump(jump)
-                next_case_jumps = []
-
-                self._emit_byte(OpCode.OP_DUP, 0)
-                self._compile_expr(case.value)
-                self._emit_byte(OpCode.OP_EQUAL, 0)
-
-                jump_if_false = self._emit_jump(OpCode.OP_JUMP_IF_FALSE, 0)
-                self._emit_byte(OpCode.OP_POP, 0)
-
-                for statement in case.statements:
-                    self._compile_stmt(statement)
-
-                next_case_jumps.append(jump_if_false)
-            else:
-                default_case_body = case.statements
-
-        for jump in next_case_jumps:
-            self._patch_jump(jump)
-
-        if default_case_body:
-            for statement in default_case_body:
-                self._compile_stmt(statement)
-
-        self._emit_byte(OpCode.OP_POP, 0)
-
-        for jump in self.switch_jumps.pop():
-            self._patch_jump(jump)
-
+    def visit_for_stmt(self, stmt: ast.Stmt): pass
     def visit_generic_type_expr(self, expr: ast.GenericType): pass
 
     def visit_debug_stmt(self, stmt: ast.DebugStmt):

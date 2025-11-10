@@ -138,22 +138,6 @@ class StmtVisitor(ABC):
     def visit_debug_stmt(self, stmt: 'DebugStmt'):
         raise NotImplementedError
 
-    @abstractmethod
-    def visit_for_stmt(self, stmt: 'ForStmt'):
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_break_stmt(self, stmt: 'BreakStmt'):
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_continue_stmt(self, stmt: 'ContinueStmt'):
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_switch_stmt(self, stmt: 'SwitchStmt'):
-        raise NotImplementedError
-
 
 # --- Abstract Base Classes for AST Nodes ---
 
@@ -461,45 +445,3 @@ class DebugStmt(Stmt):
 
     def accept(self, visitor: StmtVisitor):
         return visitor.visit_debug_stmt(self)
-
-
-@dataclass
-class ForStmt(Stmt):
-    initializer: Optional[Stmt]
-    condition: Optional[Expr]
-    increment: Optional[Expr]
-    body: Stmt
-
-    def accept(self, visitor: StmtVisitor):
-        return visitor.visit_for_stmt(self)
-
-
-@dataclass
-class BreakStmt(Stmt):
-    keyword: Token
-
-    def accept(self, visitor: StmtVisitor):
-        return visitor.visit_break_stmt(self)
-
-
-@dataclass
-class ContinueStmt(Stmt):
-    keyword: Token
-
-    def accept(self, visitor: StmtVisitor):
-        return visitor.visit_continue_stmt(self)
-
-
-@dataclass
-class Case:
-    value: Optional[Expr]  # None for default case
-    statements: List[Stmt]
-
-
-@dataclass
-class SwitchStmt(Stmt):
-    expression: Expr
-    cases: List[Case]
-
-    def accept(self, visitor: StmtVisitor):
-        return visitor.visit_switch_stmt(self)

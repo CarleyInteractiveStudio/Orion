@@ -1,0 +1,39 @@
+// Test file specifically for function return type checking.
+
+// --- Valid Cases ---
+
+// Function with a correct return type
+function get_number(): number {
+    return 123;
+}
+let a: number = get_number();
+print(a);
+
+// Void function with no return value
+function void_function() {
+    print("This function returns nothing.");
+    return;
+}
+void_function();
+
+// --- Return Type Errors ---
+
+// Error: Returning the wrong type
+function return_string_instead_of_number(): number {
+    return "not a number"; // COMPILE_ERROR: Cannot return value of type string from a function declared to return number.
+}
+
+// Error: Returning a value from a void function
+function void_returns_value() {
+    return 123; // COMPILE_ERROR: Cannot return a value from a function with no return type (void).
+}
+
+// Error: Missing a return value when one is expected
+function missing_return_value(): number {
+    return; // COMPILE_ERROR: Must return a value of type number from this function.
+}
+
+// Error: Returning from top-level code (not allowed)
+// return 42; // COMPILE_ERROR: Cannot return a value from top-level code.
+
+print("Return type tests finished.");

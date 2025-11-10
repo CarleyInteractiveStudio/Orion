@@ -1,4 +1,0 @@
-// module_b.orion
-use module_a;
-
-var mi_instancia = module_a.MiComponente();

@@ -1,6 +1,6 @@
 import sys
-from orion_compiler.lexer import Lexer
-from orion_compiler.tokens import TokenType, Token
+from . lexer import Lexer
+from . tokens import TokenType, Token
 
 def run_test(name, source, expected_tokens):
     """Helper function to run a single lexer test case."""

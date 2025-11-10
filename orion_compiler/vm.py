@@ -352,37 +352,27 @@ class VM:
                 frame = self.frames[-1]
             elif instruction == OpCode.OP_CONSTANT: self.push(read_constant())
             elif instruction == OpCode.OP_NEGATE: self.push(-self.pop())
-            elif instruction == OpCode.OP_NEGATE_NUMBER: self.push(-self.pop())
             elif instruction == OpCode.OP_ADD:
                 b = self.pop()
                 a = self.pop()
-                self.push(a + b)
-            elif instruction == OpCode.OP_ADD_NUMBER:
-                b = self.pop()
-                a = self.pop()
-                self.push(a + b)
-            elif instruction == OpCode.OP_ADD_STRING:
-                b = self.pop()
-                a = self.pop()
-                self.push(a + b)
+                if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+                    self.push(a + b)
+                elif isinstance(a, str) and isinstance(b, str):
+                    self.push(a + b)
+                else:
+                    self._runtime_error("Operands for '+' must be two numbers or two strings.")
+                    return InterpretResult.RUNTIME_ERROR, None
             elif instruction == OpCode.OP_SUBTRACT: self._binary_op(lambda a, b: a - b)
-            elif instruction == OpCode.OP_SUBTRACT_NUMBER: self._binary_op(lambda a, b: a - b)
             elif instruction == OpCode.OP_MULTIPLY: self._binary_op(lambda a, b: a * b)
-            elif instruction == OpCode.OP_MULTIPLY_NUMBER: self._binary_op(lambda a, b: a * b)
             elif instruction == OpCode.OP_DIVIDE: self._binary_op(lambda a, b: a / b)
-            elif instruction == OpCode.OP_DIVIDE_NUMBER: self._binary_op(lambda a, b: a / b)
             elif instruction == OpCode.OP_EQUAL: self._binary_op(lambda a, b: a == b)
-            elif instruction == OpCode.OP_EQUAL_NUMBER: self._binary_op(lambda a, b: a == b)
             elif instruction == OpCode.OP_GREATER: self._binary_op(lambda a, b: a > b)
-            elif instruction == OpCode.OP_GREATER_NUMBER: self._binary_op(lambda a, b: a > b)
             elif instruction == OpCode.OP_LESS: self._binary_op(lambda a, b: a < b)
-            elif instruction == OpCode.OP_LESS_NUMBER: self._binary_op(lambda a, b: a < b)
             elif instruction == OpCode.OP_NOT: self.push(not self._is_falsey(self.pop()))
             elif instruction == OpCode.OP_TRUE: self.push(True)
             elif instruction == OpCode.OP_FALSE: self.push(False)
             elif instruction == OpCode.OP_NIL: self.push(None)
             elif instruction == OpCode.OP_POP: self.pop()
-            elif instruction == OpCode.OP_DUP: self.push(self.peek(0))
             elif instruction == OpCode.OP_DEFINE_GLOBAL:
                 name = read_constant()
                 self.globals[name] = self.peek(0)
@@ -581,22 +571,6 @@ class VM:
                 module_instance.fields = native_module.copy() # Shallow copy is fine
 
                 self.push(module_instance)
-            elif instruction == OpCode.OP_IMPORT_MODULE:
-                module_name = read_constant()
-                if module_name not in self.globals:
-                    self._runtime_error(f"Module '{module_name}' not found.")
-                    return InterpretResult.RUNTIME_ERROR, None
-
-                module_func = self.globals[module_name]
-
-                # We need a new VM instance to run the module's code in its own context.
-                module_vm = VM()
-                module_vm.interpret(module_func)
-
-                module_instance = OrionInstance()
-                module_instance.fields = module_vm.globals
-                self.push(module_instance)
-
             elif instruction == OpCode.OP_BUILD_LIST:
                 item_count = read_byte()
                 elements = self.stack[-item_count:]

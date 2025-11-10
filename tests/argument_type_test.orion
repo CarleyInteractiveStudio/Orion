@@ -1,0 +1,39 @@
+// Test file specifically for function argument type checking.
+
+// --- Valid Cases ---
+
+function add(a: number, b: number): number {
+    return a + b;
+}
+let result: number = add(10, 20);
+print(result); // Expected output: 30
+
+function greet(name: string) {
+    print("Hello, " + name);
+}
+greet("Orion");
+
+// --- Argument Count Errors ---
+
+// Error: Too many arguments
+add(1, 2, 3); // COMPILE_ERROR: Expected 2 arguments but got 3.
+
+// Error: Too few arguments
+add(5); // COMPILE_ERROR: Expected 2 arguments but got 1.
+
+
+// --- Argument Type Errors ---
+
+// Error: Wrong argument type
+add(10, "not a number"); // COMPILE_ERROR: Argument 2 has wrong type. Expected number, but got string.
+
+greet(123); // COMPILE_ERROR: Argument 1 has wrong type. Expected string, but got number.
+
+
+// --- Calling Non-Functions ---
+
+let x: number = 10;
+// x(); // COMPILE_ERROR: Type number is not callable.
+
+
+print("Argument type tests finished.");
