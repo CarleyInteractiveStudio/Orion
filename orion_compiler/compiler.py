@@ -88,13 +88,22 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             "clock": FunctionType([], NUMBER),
             "print": FunctionType([], NIL, is_variadic=True),
             "slice": FunctionType([STRING, NUMBER, NUMBER], STRING),
-            "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL,
+            "lexer": MODULE, "draw": MODULE, "io": MODULE, "media": MODULE, "nil": NIL,
             "Column": COMPONENT, "Row": COMPONENT, "Label": COMPONENT, "Slider": COMPONENT, "ScrollView": COMPONENT
         }
         self.current_component: Optional[Type] = None
         self.current_function_return_type: Optional[Type] = None
         self.component_props: dict[str, dict[str, Type]] = {}
         self.native_modules = native_module_specs or {}
+
+        # Define types for native module functions
+        if "io" not in self.native_modules:
+            self.native_modules["io"] = {
+                "read": FunctionType([STRING], STRING),
+                "write": FunctionType([STRING, ANY], NIL),
+                "append": FunctionType([STRING, ANY], NIL),
+                "exists": FunctionType([STRING], BOOL)
+            }
         self.scope_depth: int = 0
         self.had_error = False
         self.type_map = { "any": ANY, "nil": NIL, "bool": BOOL, "number": NUMBER, "string": STRING, "function": FUNCTION, "component": COMPONENT, "module": MODULE, "list": ANY_LIST, "dict": ANY_DICT, "Column": ComponentType("Column"), "Row": ComponentType("Row") }
@@ -262,45 +271,43 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             for arg in expr.arguments: self._analyze_expr(arg)
             return ANY
 
+        # Handle module function calls
+        if isinstance(expr.callee, ast.Get) and self._analyze_expr(expr.callee.object) == MODULE:
+            module_name = expr.callee.object.name.lexeme
+            func_name = expr.callee.name.lexeme
+            if module_name in self.native_modules and func_name in self.native_modules[module_name]:
+                callee_type = self.native_modules[module_name][func_name]
+
+        # Handle constructors
         if callee_type == COMPONENT:
-            # This is a generic component constructor call like Label(...)
-            # For now, we'll allow any arguments and return a component type.
-            # A more advanced implementation would check constructor signatures.
             for arg in expr.arguments: self._analyze_expr(arg)
-            if isinstance(expr.callee, ast.Variable):
-                return ComponentType(expr.callee.name.lexeme)
-            return ANY # Fallback
-
+            if isinstance(expr.callee, ast.Variable): return ComponentType(expr.callee.name.lexeme)
+            return ANY
         if callee_type == CLASS:
-             # Class constructor call, e.g., MyClass().
             for arg in expr.arguments: self._analyze_expr(arg)
-            if isinstance(expr.callee, ast.Variable):
-                return ClassType(expr.callee.name.lexeme) # Return an instance type
+            if isinstance(expr.callee, ast.Variable): return ClassType(expr.callee.name.lexeme)
             return ANY
 
-        if not isinstance(callee_type, FunctionType):
-            type_error(self._get_token_from_expr(expr.callee), f"Type {callee_type} is not callable.")
-            self.had_error = True
-            return ANY
-
-        if not callee_type.is_variadic:
-            if len(expr.arguments) != len(callee_type.param_types):
-                type_error(expr.paren, f"Expected {len(callee_type.param_types)} arguments but got {len(expr.arguments)}.")
-                self.had_error = True
-                return callee_type.return_type
-
-            for i, arg in enumerate(expr.arguments):
-                arg_type = self._analyze_expr(arg)
-                param_type = callee_type.param_types[i]
-                if not self._is_assignable(param_type, arg_type):
-                    type_error(self._get_token_from_expr(arg), f"Argument {i+1} has wrong type. Expected {param_type}, but got {arg_type}.")
+        # Handle function calls
+        if isinstance(callee_type, FunctionType):
+            if callee_type.is_variadic:
+                for arg in expr.arguments: self._analyze_expr(arg)
+            else:
+                if len(expr.arguments) != len(callee_type.param_types):
+                    type_error(expr.paren, f"Expected {len(callee_type.param_types)} arguments but got {len(expr.arguments)}.")
                     self.had_error = True
-        else:
-            # For variadic functions, we don't check arity, just analyze arguments.
-            for arg in expr.arguments:
-                self._analyze_expr(arg)
+                    return callee_type.return_type
+                for i, arg in enumerate(expr.arguments):
+                    arg_type = self._analyze_expr(arg)
+                    param_type = callee_type.param_types[i]
+                    if not self._is_assignable(param_type, arg_type):
+                        type_error(self._get_token_from_expr(arg), f"Argument {i+1} has wrong type. Expected {param_type}, but got {arg_type}.")
+                        self.had_error = True
+            return callee_type.return_type
 
-        return callee_type.return_type
+        type_error(self._get_token_from_expr(expr.callee), f"Type {callee_type} is not callable.")
+        self.had_error = True
+        return ANY
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
     def visit_get_expr(self, expr: ast.Get) -> Type:
         object_type = self._analyze_expr(expr.object)
@@ -405,11 +412,9 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if not expr.keys: return DictType(ANY, ANY)
         key_types = [self._analyze_expr(k) for k in expr.keys]
         value_types = [self._analyze_expr(v) for v in expr.values]
-        for i, key_type in enumerate(key_types):
+        for key_type in key_types:
             if key_type != ANY and key_type != STRING:
-                key_token = self._get_token_from_expr(expr.keys[i])
-                type_error(key_token, "Dictionary keys must be of type 'string'.")
-                self.had_error = True
+                print("Type Error: Dictionary keys must be strings."); self.had_error = True
         first_value_type = value_types[0]
         return DictType(STRING, first_value_type) if all(self._is_assignable(first_value_type, t) for t in value_types) else DictType(STRING, ANY)
     def visit_get_subscript_expr(self, expr: ast.GetSubscript) -> Type:

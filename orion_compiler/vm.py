@@ -34,13 +34,14 @@ class VM:
         def native_print(*args):
             print(*[str(arg) for arg in args])
             return None
-        def native_slice(s, start, end):
-            if not isinstance(s, str) or not isinstance(start, int) or not isinstance(end, int): return None
+        def native_slice(s, start, end=None):
+            if not isinstance(s, str) or not isinstance(start, int): return None
+            if end is None: return s[start:]
             return s[start:end]
 
         self._define_native("clock", 0, lambda: time.time())
         self._define_native("print", None, native_print)
-        self._define_native("slice", 3, native_slice)
+        self._define_native("slice", None, native_slice)
         self._init_lexer_global()
 
         self.native_modules: dict = {}
