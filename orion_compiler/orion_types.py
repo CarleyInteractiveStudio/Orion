@@ -47,10 +47,14 @@ class ClassType(Type):
 class FunctionType(Type):
     param_types: list['Type']
     return_type: 'Type'
+    is_variadic: bool = False
     name: str = "function"
 
     def __str__(self) -> str:
-        param_str = ", ".join(map(str, self.param_types))
+        if self.is_variadic:
+            param_str = "..."
+        else:
+            param_str = ", ".join(map(str, self.param_types))
         return f"function({param_str}) -> {self.return_type}"
 
 # --- Singleton Instances of Primitive Types ---
@@ -60,7 +64,7 @@ NIL = PrimitiveType("nil")
 BOOL = PrimitiveType("bool")
 NUMBER = PrimitiveType("number")
 STRING = PrimitiveType("string")
-FUNCTION = FunctionType([], ANY) # Generic function type
+FUNCTION = FunctionType([], ANY) # Generic function type for user-defined functions
 TYPE = PrimitiveType("type")
 CLASS = PrimitiveType("class")
 COMPONENT = PrimitiveType("component")

@@ -483,19 +483,22 @@ class Parser:
             return ast.ListLiteral(elements)
 
         if self._match(TokenType.LEFT_BRACE):
-            keys = []
-            values = []
+            keys: List[ast.Expr] = []
+            values: List[ast.Expr] = []
             if not self._check(TokenType.RIGHT_BRACE):
                 while True:
-                    key_literal = None
-                    if self._match(TokenType.STRING):
-                        key_literal = self._previous().literal
-                    elif self._match(TokenType.IDENTIFIER):
-                        key_literal = self._previous().lexeme
+                    # Key can be a string literal or an identifier
+                    key: ast.Expr
+                    if self._check(TokenType.STRING):
+                        key = self._primary() # Consumes the string literal token
+                    elif self._check(TokenType.IDENTIFIER):
+                        # Convert identifier to a string literal
+                        identifier_token = self._advance()
+                        key = ast.Literal(identifier_token.lexeme)
                     else:
-                        raise self._error(self._peek(), "Expect string or identifier as dictionary key.")
+                        raise self._error(self._peek(), "Expect string literal or identifier as dictionary key.")
 
-                    keys.append(ast.Literal(key_literal))
+                    keys.append(key)
 
                     self._consume(TokenType.COLON, "Expect ':' after dictionary key.")
                     values.append(self._expression())

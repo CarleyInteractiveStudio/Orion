@@ -4,7 +4,7 @@ from . import ast_nodes as ast
 from .bytecode import Chunk, OpCode
 from .tokens import Token, TokenType
 from .objects import OrionCompiledFunction, OrionComponentDef
-from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT, ComponentType, FunctionType
+from .orion_types import Type, ListType, DictType, ANY, NUMBER, STRING, BOOL, NIL, FUNCTION, MODULE, COMPONENT, ANY_LIST, ANY_DICT, ComponentType, FunctionType, TYPE, ClassType, CLASS
 from .errors import type_error
 from .lexer import Lexer
 from .parser import Parser
@@ -85,7 +85,10 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
     def __init__(self, native_module_specs: dict = None):
         self.locals: list[Local] = []
         self.globals: dict[str, Type] = {
-            "clock": FUNCTION, "print": FUNCTION, "slice": FUNCTION, "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL,
+            "clock": FunctionType([], NUMBER),
+            "print": FunctionType([], NIL, is_variadic=True),
+            "slice": FunctionType([STRING, NUMBER, NUMBER], STRING),
+            "lexer": MODULE, "draw": MODULE, "fs": MODULE, "media": MODULE, "nil": NIL,
             "Column": COMPONENT, "Row": COMPONENT, "Label": COMPONENT, "Slider": COMPONENT, "ScrollView": COMPONENT
         }
         self.current_component: Optional[Type] = None
@@ -159,7 +162,20 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if expr.value is None: return NIL
         return ANY
     def visit_grouping_expr(self, expr: ast.Grouping) -> Type: return self._analyze_expr(expr.expression)
-    def visit_variable_expr(self, expr: ast.Variable) -> Type: return self._get_var_type(expr.name)
+    def visit_variable_expr(self, expr: ast.Variable) -> Type:
+        # Special case: if the variable name refers to a component type,
+        # we treat it as the generic COMPONENT type so it's callable.
+        type_in_globals = self.globals.get(expr.name.lexeme)
+        if type_in_globals == TYPE:
+            # This is a bit of a hack. We see a name that is a type, like 'Label'.
+            # We return the generic 'component' type to indicate it's a callable constructor.
+            # The visit_call_expr will then refine this to a specific ComponentType.
+            return COMPONENT
+
+        if type_in_globals == CLASS:
+            return CLASS
+
+        return self._get_var_type(expr.name)
     def visit_generic_type_expr(self, expr: ast.GenericType) -> Type: return ANY
     def _get_token_from_expr(self, expr: ast.Expr) -> Token:
         if isinstance(expr, (ast.Binary, ast.Unary)): return expr.operator
@@ -246,23 +262,43 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             for arg in expr.arguments: self._analyze_expr(arg)
             return ANY
 
+        if callee_type == COMPONENT:
+            # This is a generic component constructor call like Label(...)
+            # For now, we'll allow any arguments and return a component type.
+            # A more advanced implementation would check constructor signatures.
+            for arg in expr.arguments: self._analyze_expr(arg)
+            if isinstance(expr.callee, ast.Variable):
+                return ComponentType(expr.callee.name.lexeme)
+            return ANY # Fallback
+
+        if callee_type == CLASS:
+             # Class constructor call, e.g., MyClass().
+            for arg in expr.arguments: self._analyze_expr(arg)
+            if isinstance(expr.callee, ast.Variable):
+                return ClassType(expr.callee.name.lexeme) # Return an instance type
+            return ANY
+
         if not isinstance(callee_type, FunctionType):
             type_error(self._get_token_from_expr(expr.callee), f"Type {callee_type} is not callable.")
             self.had_error = True
             return ANY
 
-        if len(expr.arguments) != len(callee_type.param_types):
-            type_error(expr.paren, f"Expected {len(callee_type.param_types)} arguments but got {len(expr.arguments)}.")
-            self.had_error = True
-            # Return the expected return type anyway to avoid cascading errors
-            return callee_type.return_type
-
-        for i, arg in enumerate(expr.arguments):
-            arg_type = self._analyze_expr(arg)
-            param_type = callee_type.param_types[i]
-            if not self._is_assignable(param_type, arg_type):
-                type_error(self._get_token_from_expr(arg), f"Argument {i+1} has wrong type. Expected {param_type}, but got {arg_type}.")
+        if not callee_type.is_variadic:
+            if len(expr.arguments) != len(callee_type.param_types):
+                type_error(expr.paren, f"Expected {len(callee_type.param_types)} arguments but got {len(expr.arguments)}.")
                 self.had_error = True
+                return callee_type.return_type
+
+            for i, arg in enumerate(expr.arguments):
+                arg_type = self._analyze_expr(arg)
+                param_type = callee_type.param_types[i]
+                if not self._is_assignable(param_type, arg_type):
+                    type_error(self._get_token_from_expr(arg), f"Argument {i+1} has wrong type. Expected {param_type}, but got {arg_type}.")
+                    self.had_error = True
+        else:
+            # For variadic functions, we don't check arity, just analyze arguments.
+            for arg in expr.arguments:
+                self._analyze_expr(arg)
 
         return callee_type.return_type
     def visit_logical_expr(self, expr: ast.Logical) -> Type: return BOOL
@@ -274,9 +310,14 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
             if expr.name.lexeme in ("forEach", "map"): return FUNCTION
             type_error(expr.name, f"Type 'list' has no property '{expr.name.lexeme}'."); self.had_error = True; return ANY
         if isinstance(object_type, ComponentType):
-            component_name = object_type.name; prop_name = expr.name.lexeme
-            if component_name in self.component_props and prop_name in self.component_props[component_name]: return self.component_props[component_name][prop_name]
-            type_error(expr.name, f"Component '{component_name}' has no property named '{prop_name}'."); self.had_error = True; return ANY
+            # Allow any property access on components for now.
+            return ANY
+
+        if isinstance(object_type, ClassType):
+            # For now, we'll assume any property access on a class instance is valid
+            # and returns 'any'. A more sophisticated implementation would check
+            # declared properties on the class.
+            return ANY
 
         if object_type == MODULE:
             module_name = expr.object.name.lexeme
@@ -296,13 +337,11 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if isinstance(object_type, ListType):
             type_error(expr.name, "Cannot set properties on a list."); self.had_error = True; return value_type
         if isinstance(object_type, ComponentType):
-            component_name = object_type.name; prop_name = expr.name.lexeme
-            if component_name in self.component_props and prop_name in self.component_props[component_name]:
-                expected_type = self.component_props[component_name][prop_name]
-                if not self._is_assignable(expected_type, value_type):
-                    type_error(expr.name, f"Cannot assign value of type {value_type} to property '{prop_name}' of type {expected_type}."); self.had_error = True
-            else:
-                type_error(expr.name, f"Component '{component_name}' has no property named '{prop_name}'."); self.had_error = True
+            # Allow setting any property on components for now.
+            return value_type
+
+        if isinstance(object_type, ClassType):
+            # Similar to get_expr, we allow setting any property.
             return value_type
         if object_type != ANY:
             type_error(expr.name, f"Only components have settable properties, not type '{object_type}'."); self.had_error = True
@@ -366,9 +405,11 @@ class TypeAnalyzer(ast.ExprVisitor, ast.StmtVisitor):
         if not expr.keys: return DictType(ANY, ANY)
         key_types = [self._analyze_expr(k) for k in expr.keys]
         value_types = [self._analyze_expr(v) for v in expr.values]
-        for key_type in key_types:
+        for i, key_type in enumerate(key_types):
             if key_type != ANY and key_type != STRING:
-                print("Type Error: Dictionary keys must be strings."); self.had_error = True
+                key_token = self._get_token_from_expr(expr.keys[i])
+                type_error(key_token, "Dictionary keys must be of type 'string'.")
+                self.had_error = True
         first_value_type = value_types[0]
         return DictType(STRING, first_value_type) if all(self._is_assignable(first_value_type, t) for t in value_types) else DictType(STRING, ANY)
     def visit_get_subscript_expr(self, expr: ast.GetSubscript) -> Type:
