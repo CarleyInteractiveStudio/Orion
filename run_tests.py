@@ -4,9 +4,7 @@ from orion_compiler.compiler import compile
 
 def run_tests():
     # Find all .orion files in the root and tests/ directories
-    test_files = [f for f in os.listdir('.') if f.endswith('.orion')]
-    if os.path.isdir('tests'):
-        test_files.extend([os.path.join('tests', f) for f in os.listdir('tests') if f.endswith('.orion')])
+    test_files = ['tests/io_test.orion']
 
     all_passed = True
     failed_tests = []

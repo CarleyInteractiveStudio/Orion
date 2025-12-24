@@ -1,0 +1,14 @@
+use io;
+
+let file_path = "temp_test_file.txt";
+let content = "Hello from Orion!";
+
+io.write(file_path, content);
+
+let read_content = io.read(file_path);
+
+if (read_content == content) {
+    print("IO test passed!");
+} else {
+    print("IO test failed!");
+}
